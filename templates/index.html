@@ -6,9 +6,11 @@
 {% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات، ومنها إضافة المستخدمين وإدارة الحسابات.</p>{% elif current_user.role == 'marketer' %}<p>يمكنك إضافة العقارات والعروض والأرقام والرسائل، بدون إدارة المستخدمين أو حذف البيانات.</p>{% else %}<p>يمكنك المشاهدة والبحث فقط.</p>{% endif %}
 </div>
 <div class="nav">
+<a class="btn gray" href="{{url_for('landing')}}">القائمة الرئيسية</a>
+<a class="btn" href="{{url_for('visitor_offers')}}" target="_blank">معاينة صفحة الزائر</a>
 <a class="btn green" href="{{url_for('properties')}}">العقارات</a>
 <a class="btn gold" href="{{url_for('contacts', category='marketers')}}">الأرقام</a>
 <a class="btn brown" href="{{url_for('offers')}}">العروض</a>
-{% if current_user.role=='admin' %}<a class="btn black" href="{{url_for('users')}}">إدارة المستخدمين</a>{% endif %}
+{% if can_manage_accounts(current_user) %}<a class="btn black" href="{{url_for('users')}}">إدارة المستخدمين</a>{% endif %}
 </div>
 {% endblock %}

@@ -1,4 +1,4 @@
-import os, urllib.parse, base64
+import os, urllib.parse, base64, json
 from datetime import datetime
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session
@@ -67,7 +67,27 @@ class Offer(db.Model):
     description = db.Column(db.Text, default='')
     price = db.Column(db.Text, default='')
     image_data = db.Column(db.Text, default='')
+    images_data = db.Column(db.Text, default='[]')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def images_list(self):
+        items = []
+        if self.image_data:
+            items.append(self.image_data)
+        try:
+            more = json.loads(self.images_data or '[]')
+            if isinstance(more, list):
+                items.extend([x for x in more if x])
+        except Exception:
+            pass
+        # إزالة التكرار مع الحفاظ على الترتيب
+        seen = set()
+        result = []
+        for item in items:
+            if item not in seen:
+                seen.add(item)
+                result.append(item)
+        return result
 
 class CustomerMessage(db.Model):
     __tablename__ = 'customer_messages'
@@ -101,9 +121,28 @@ def ensure_user_permission_columns():
         print('Permission column migration warning:', exc)
 
 
+
+def ensure_offer_gallery_columns():
+    # إضافة عمود الصور المتعددة للعروض في قواعد البيانات القديمة.
+    try:
+        inspector = db.inspect(db.engine)
+        if 'offers' not in inspector.get_table_names():
+            return
+        existing = {c['name'] for c in inspector.get_columns('offers')}
+        with db.engine.begin() as conn:
+            dialect = db.engine.dialect.name
+            if 'images_data' not in existing:
+                if dialect == 'postgresql':
+                    conn.execute(db.text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS images_data TEXT DEFAULT '[]'"))
+                else:
+                    conn.execute(db.text("ALTER TABLE offers ADD COLUMN images_data TEXT DEFAULT '[]'"))
+    except Exception as exc:
+        print('Offer gallery migration warning:', exc)
+
 def init_db():
     db.create_all()
     ensure_user_permission_columns()
+    ensure_offer_gallery_columns()
     if User.query.count() == 0:
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
         admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
@@ -289,9 +328,6 @@ def update_user_permissions(uid):
 
 @app.route('/')
 def landing():
-    user = get_current_user()
-    if user and user.is_active:
-        return redirect(url_for('index'))
     return render_template('landing.html')
 
 @app.route('/member')
@@ -302,6 +338,11 @@ def member_entry():
 def visitor_offers():
     offers_rows = Offer.query.order_by(Offer.id.desc()).all()
     return render_template('visitor_offers.html', offers=offers_rows)
+
+@app.route('/visitor/offer/<int:oid>')
+def visitor_offer_detail(oid):
+    offer = Offer.query.get_or_404(oid)
+    return render_template('visitor_offer_detail.html', offer=offer, images=offer.images_list())
 
 @app.route('/dashboard')
 @login_required
@@ -406,13 +447,20 @@ def offers():
         if user.role not in ['admin', 'executive', 'marketer']:
             flash('ليس لديك صلاحية إضافة عرض')
             return redirect(url_for('offers'))
-        image_data = ''
-        file = request.files.get('image')
-        if file and file.filename:
-            raw = file.read()
-            mime = file.mimetype or 'image/jpeg'
-            image_data = f'data:{mime};base64,' + base64.b64encode(raw).decode('utf-8')
-        row = Offer(title=request.form.get('title',''), description=request.form.get('description',''), price=request.form.get('price',''), image_data=image_data)
+        uploaded = []
+        files = request.files.getlist('images')
+        legacy_file = request.files.get('image')
+        if legacy_file and legacy_file.filename and legacy_file not in files:
+            files.insert(0, legacy_file)
+        for file in files:
+            if file and file.filename:
+                raw = file.read()
+                if raw:
+                    mime = file.mimetype or 'image/jpeg'
+                    uploaded.append(f'data:{mime};base64,' + base64.b64encode(raw).decode('utf-8'))
+        image_data = uploaded[0] if uploaded else ''
+        extra_images = uploaded[1:] if len(uploaded) > 1 else []
+        row = Offer(title=request.form.get('title',''), description=request.form.get('description',''), price=request.form.get('price',''), image_data=image_data, images_data=json.dumps(extra_images, ensure_ascii=False))
         db.session.add(row); db.session.commit()
         flash('تم إضافة العرض وحفظه تلقائياً على السحابة')
         return redirect(url_for('offers'))
