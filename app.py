@@ -19,6 +19,7 @@ db = SQLAlchemy(app)
 
 ROLE_LABELS = {
     'admin': 'مدير عام',
+    'executive': 'مدير تنفيذي',
     'marketer': 'مسوق',
     'viewer': 'مشاهد'
 }
@@ -31,6 +32,8 @@ class User(db.Model):
     full_name = db.Column(db.Text, default='')
     role = db.Column(db.String(20), default='viewer', index=True)
     is_active = db.Column(db.Boolean, default=True)
+    can_delete = db.Column(db.Boolean, default=False)
+    can_manage_users = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
@@ -75,15 +78,49 @@ class CustomerMessage(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+def ensure_user_permission_columns():
+    # create_all لا يضيف الأعمدة الجديدة للجداول القديمة، لذلك نضيفها آلياً عند التشغيل.
+    try:
+        inspector = db.inspect(db.engine)
+        if 'users' not in inspector.get_table_names():
+            return
+        existing = {c['name'] for c in inspector.get_columns('users')}
+        with db.engine.begin() as conn:
+            dialect = db.engine.dialect.name
+            if 'can_delete' not in existing:
+                if dialect == 'postgresql':
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_delete BOOLEAN DEFAULT FALSE'))
+                else:
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN can_delete BOOLEAN DEFAULT 0'))
+            if 'can_manage_users' not in existing:
+                if dialect == 'postgresql':
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_users BOOLEAN DEFAULT FALSE'))
+                else:
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN can_manage_users BOOLEAN DEFAULT 0'))
+    except Exception as exc:
+        print('Permission column migration warning:', exc)
+
+
 def init_db():
     db.create_all()
+    ensure_user_permission_columns()
     if User.query.count() == 0:
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
         admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
-        admin = User(username=admin_username, full_name='مدير النظام', role='admin', is_active=True)
+        admin = User(username=admin_username, full_name='مدير النظام', role='admin', is_active=True, can_delete=True, can_manage_users=True)
         admin.set_password(admin_password)
         db.session.add(admin)
         db.session.commit()
+    else:
+        # تأكد أن كل مدير عام موجود لديه الصلاحيات الكاملة.
+        changed = False
+        for admin in User.query.filter_by(role='admin').all():
+            if not getattr(admin, 'can_delete', False):
+                admin.can_delete = True; changed = True
+            if not getattr(admin, 'can_manage_users', False):
+                admin.can_manage_users = True; changed = True
+        if changed:
+            db.session.commit()
 
 with app.app_context():
     init_db()
@@ -94,7 +131,7 @@ def inject_user():
     uid = session.get('user_id')
     if uid:
         user = User.query.get(uid)
-    return dict(current_user=user, role_labels=ROLE_LABELS)
+    return dict(current_user=user, role_labels=ROLE_LABELS, can_delete_content=can_delete_content, can_manage_accounts=can_manage_accounts)
 
 def get_current_user():
     uid = session.get('user_id')
@@ -129,6 +166,26 @@ def roles_required(*roles):
         return wrapper
     return decorator
 
+def can_delete_content(user):
+    return bool(user and user.is_active and (user.role == 'admin' or getattr(user, 'can_delete', False)))
+
+def can_manage_accounts(user):
+    return bool(user and user.is_active and (user.role == 'admin' or getattr(user, 'can_manage_users', False)))
+
+def manage_users_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = get_current_user()
+        if not user or not user.is_active:
+            session.clear()
+            flash('يرجى تسجيل الدخول أولاً')
+            return redirect(url_for('login'))
+        if not can_manage_accounts(user):
+            flash('ليس لديك صلاحية إدارة المستخدمين')
+            return redirect(url_for('index'))
+        return fn(*args, **kwargs)
+    return wrapper
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -151,7 +208,7 @@ def logout():
 
 @app.route('/users', methods=['GET', 'POST'])
 @login_required
-@roles_required('admin')
+@manage_users_required
 def users():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -166,7 +223,12 @@ def users():
         if User.query.filter_by(username=username).first():
             flash('اسم المستخدم موجود مسبقاً')
             return redirect(url_for('users'))
-        user = User(username=username, full_name=full_name, role=role, is_active=True)
+        can_delete = request.form.get('can_delete') == 'on'
+        can_manage_users = request.form.get('can_manage_users') == 'on'
+        if role == 'admin':
+            can_delete = True
+            can_manage_users = True
+        user = User(username=username, full_name=full_name, role=role, is_active=True, can_delete=can_delete, can_manage_users=can_manage_users)
         user.set_password(password)
         db.session.add(user); db.session.commit()
         flash('تم إضافة المستخدم بنجاح')
@@ -176,7 +238,7 @@ def users():
 
 @app.route('/users/delete/<int:uid>', methods=['POST'])
 @login_required
-@roles_required('admin')
+@manage_users_required
 def delete_user(uid):
     current = get_current_user()
     if current and current.id == uid:
@@ -189,7 +251,7 @@ def delete_user(uid):
 
 @app.route('/users/toggle/<int:uid>', methods=['POST'])
 @login_required
-@roles_required('admin')
+@manage_users_required
 def toggle_user(uid):
     current = get_current_user()
     if current and current.id == uid:
@@ -199,6 +261,30 @@ def toggle_user(uid):
     user.is_active = not user.is_active
     db.session.commit()
     flash('تم تحديث حالة المستخدم')
+    return redirect(url_for('users'))
+
+@app.route('/users/permissions/<int:uid>', methods=['POST'])
+@login_required
+@manage_users_required
+def update_user_permissions(uid):
+    current = get_current_user()
+    user = User.query.get_or_404(uid)
+    role = request.form.get('role', user.role)
+    if role not in ROLE_LABELS:
+        role = user.role
+    # لا تجعل المدير الحالي يفقد صلاحياته بالخطأ.
+    if current and current.id == uid and user.role == 'admin':
+        role = 'admin'
+    user.role = role
+    user.can_delete = request.form.get('can_delete') == 'on'
+    user.can_manage_users = request.form.get('can_manage_users') == 'on'
+    user.is_active = request.form.get('is_active') == 'on'
+    if user.role == 'admin':
+        user.can_delete = True
+        user.can_manage_users = True
+        user.is_active = True
+    db.session.commit()
+    flash('تم تحديث صلاحيات المستخدم')
     return redirect(url_for('users'))
 
 @app.route('/')
@@ -227,7 +313,7 @@ def index():
 def properties():
     user = get_current_user()
     if request.method == 'POST':
-        if user.role not in ['admin', 'marketer']:
+        if user.role not in ['admin', 'executive', 'marketer']:
             flash('ليس لديك صلاحية إضافة عقار')
             return redirect(url_for('properties'))
         row = Property(name=request.form.get('name',''), location=request.form.get('location',''), price=request.form.get('price',''), specs=request.form.get('specs',''))
@@ -250,8 +336,10 @@ def property_detail(pid):
 
 @app.route('/properties/delete/<int:pid>', methods=['POST'])
 @login_required
-@roles_required('admin')
 def delete_property(pid):
+    if not can_delete_content(get_current_user()):
+        flash('ليس لديك صلاحية الحذف')
+        return redirect(url_for('properties'))
     row = Property.query.get_or_404(pid)
     db.session.delete(row); db.session.commit()
     flash('تم حذف العقار من السحابة')
@@ -264,7 +352,7 @@ def contacts(category):
     labels = {'marketers':'أرقام المسوقين','customers':'أرقام الزباين','developers':'أرقام المطورين'}
     if category not in labels: return redirect(url_for('index'))
     if request.method == 'POST':
-        if user.role not in ['admin', 'marketer']:
+        if user.role not in ['admin', 'executive', 'marketer']:
             flash('ليس لديك صلاحية إضافة رقم')
             return redirect(url_for('contacts', category=category))
         row = Contact(category=category, name=request.form.get('name',''), phone=request.form.get('phone',''), notes=request.form.get('notes',''))
@@ -276,8 +364,10 @@ def contacts(category):
 
 @app.route('/contacts/delete/<int:cid>/<category>', methods=['POST'])
 @login_required
-@roles_required('admin')
 def delete_contact(cid, category):
+    if not can_delete_content(get_current_user()):
+        flash('ليس لديك صلاحية الحذف')
+        return redirect(url_for('contacts', category=category))
     row = Contact.query.get_or_404(cid)
     db.session.delete(row); db.session.commit()
     flash('تم حذف الرقم من السحابة')
@@ -287,7 +377,7 @@ def delete_contact(cid, category):
 @login_required
 def send_whatsapp():
     user = get_current_user()
-    if user.role not in ['admin', 'marketer']:
+    if user.role not in ['admin', 'executive', 'marketer']:
         flash('ليس لديك صلاحية إرسال رسائل واتساب')
         return redirect(url_for('index'))
     ids = request.form.getlist('selected')
@@ -313,7 +403,7 @@ def send_whatsapp():
 def offers():
     user = get_current_user()
     if request.method == 'POST':
-        if user.role not in ['admin', 'marketer']:
+        if user.role not in ['admin', 'executive', 'marketer']:
             flash('ليس لديك صلاحية إضافة عرض')
             return redirect(url_for('offers'))
         image_data = ''
@@ -334,7 +424,7 @@ def offers():
 @login_required
 def messages():
     user = get_current_user()
-    if user.role not in ['admin', 'marketer']:
+    if user.role not in ['admin', 'executive', 'marketer']:
         flash('ليس لديك صلاحية حفظ رسائل العملاء')
         return redirect(url_for('offers'))
     row = CustomerMessage(customer_name=request.form.get('customer_name',''), phone=request.form.get('phone',''), message=request.form.get('message',''))
@@ -344,8 +434,10 @@ def messages():
 
 @app.route('/offers/delete/<int:oid>', methods=['POST'])
 @login_required
-@roles_required('admin')
 def delete_offer(oid):
+    if not can_delete_content(get_current_user()):
+        flash('ليس لديك صلاحية الحذف')
+        return redirect(url_for('offers'))
     row = Offer.query.get_or_404(oid)
     db.session.delete(row); db.session.commit()
     flash('تم حذف العرض من السحابة')
