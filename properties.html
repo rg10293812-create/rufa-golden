@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block content %}
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a>
+<h2>إدارة المستخدمين والصلاحيات</h2>
+<div class="card">
+<h3>إضافة حساب جديد</h3>
+<form method="post">
+<div class="row"><input name="full_name" placeholder="الاسم الكامل"><input name="username" placeholder="اسم المستخدم" required><input name="password" type="password" placeholder="كلمة المرور" required></div>
+<select name="role">
+{% for key,label in roles.items() %}<option value="{{key}}">{{label}}</option>{% endfor %}
+</select>
+<button class="btn green">إضافة المستخدم</button>
+</form>
+</div>
+<table><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>الحالة</th><th>إجراءات</th></tr>{% for u in rows %}<tr><td>{{u.full_name}}</td><td>{{u.username}}</td><td>{{roles.get(u.role,u.role)}}</td><td>{{'فعال' if u.is_active else 'معطل'}}</td><td><form method="post" action="{{url_for('toggle_user',uid=u.id)}}" style="display:inline"><button class="btn gold">{{'تعطيل' if u.is_active else 'تفعيل'}}</button></form><form method="post" action="{{url_for('delete_user',uid=u.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف المستخدم؟')">حذف</button></form></td></tr>{% endfor %}</table>
+{% endblock %}

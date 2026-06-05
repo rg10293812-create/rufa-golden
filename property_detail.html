@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block content %}
+<h2>النظام السحابي</h2>
+<p class="small">أي إضافة أو حذف يتم حفظه مباشرة في قاعدة البيانات السحابية، ويظهر على جميع الأجهزة التي تفتح نفس الرابط.</p>
+<div class="card">
+<h3>صلاحيتك الحالية: {{role_labels.get(current_user.role,current_user.role)}}</h3>
+{% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات، ومنها إضافة المستخدمين وإدارة الحسابات.</p>{% elif current_user.role == 'marketer' %}<p>يمكنك إضافة العقارات والعروض والأرقام والرسائل، بدون إدارة المستخدمين أو حذف البيانات.</p>{% else %}<p>يمكنك المشاهدة والبحث فقط.</p>{% endif %}
+</div>
+<div class="nav">
+<a class="btn green" href="{{url_for('properties')}}">العقارات</a>
+<a class="btn gold" href="{{url_for('contacts', category='marketers')}}">الأرقام</a>
+<a class="btn brown" href="{{url_for('offers')}}">العروض</a>
+{% if current_user.role=='admin' %}<a class="btn black" href="{{url_for('users')}}">إدارة المستخدمين</a>{% endif %}
+</div>
+{% endblock %}
