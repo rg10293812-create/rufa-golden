@@ -1,9 +1,0 @@
-{% extends 'base.html' %}{% block content %}
-<h2>النظام السحابي</h2>
-<p class="small">أي إضافة أو حذف يتم حفظه مباشرة في قاعدة البيانات السحابية، ويظهر على جميع الأجهزة التي تفتح نفس الرابط.</p>
-<div class="nav">
-<a class="btn green" href="{{url_for('properties')}}">العقارات</a>
-<a class="btn gold" href="{{url_for('contacts', category='marketers')}}">الأرقام</a>
-<a class="btn brown" href="{{url_for('offers')}}">العروض</a>
-</div>
-{% endblock %}
