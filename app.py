@@ -202,6 +202,22 @@ def toggle_user(uid):
     return redirect(url_for('users'))
 
 @app.route('/')
+def landing():
+    user = get_current_user()
+    if user and user.is_active:
+        return redirect(url_for('index'))
+    return render_template('landing.html')
+
+@app.route('/member')
+def member_entry():
+    return redirect(url_for('login'))
+
+@app.route('/visitor')
+def visitor_offers():
+    offers_rows = Offer.query.order_by(Offer.id.desc()).all()
+    return render_template('visitor_offers.html', offers=offers_rows)
+
+@app.route('/dashboard')
 @login_required
 def index():
     return render_template('index.html')
