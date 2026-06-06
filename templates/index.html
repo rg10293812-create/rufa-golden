@@ -1,16 +1,14 @@
 {% extends 'base.html' %}{% block content %}
 <h2>لوحة تحكم روفا جولدن</h2>
-<p class="small">لوحة احترافية مختصرة تعرض حالة النظام، العروض، المسوقين، والمبيعات.</p>
+<p class="small">واجهة الأعضاء مرتبة في مكان واحد بدون تكرار أزرار أعلى وأسفل الصفحة.</p>
 <div class="dash">
   <div class="stat">العقارات<b>{{stats.properties}}</b></div>
   <div class="stat">العروض النشطة<b>{{stats.offers}}</b></div>
   <div class="stat">العملاء<b>{{stats.customers}}</b></div>
-  <div class="stat">المسوقين<b>{{stats.marketers}}</b></div>
+  <div class="stat">المسوقين الخارجيين<b>{{stats.marketers}}</b></div>
   <div class="stat">إجمالي المبيعات<b>{{stats.sales|sar}}</b></div>
 </div>
-<div class="card"><h3>صلاحيتك الحالية: {{role_labels.get(current_user.role,current_user.role)}}</h3>
-{% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات.</p>{% elif current_user.role == 'marketer' %}<p>تستطيع إضافة ومتابعة عروضك وعقاراتك وحسابك المالي.</p>{% else %}<p>حسب الصلاحية المسندة لحسابك.</p>{% endif %}</div>
-<h3>أداء المسوقين</h3>
-<table><tr><th>المسوق</th><th>العروض</th><th>المبيعات</th><th>العمولة</th><th>الرصيد</th></tr>{% for u,st in top %}<tr><td><a href="{{url_for('marketer_detail',uid=u.id)}}">{{u.full_name or u.username}}</a></td><td>{{st.offers_count}}</td><td>{{st.total_sales|sar}}</td><td>{{st.total_commission|sar}}</td><td>{{st.balance|sar}}</td></tr>{% endfor %}</table>
-<div class="nav"><a class="btn green" href="{{url_for('properties')}}">العقارات</a><a class="btn brown" href="{{url_for('offers')}}">العروض</a><a class="btn black" href="{{url_for('marketers')}}">إدارة المسوقين</a><a class="btn gold" href="{{url_for('finance')}}">الإدارة المالية</a><a class="btn" href="{{url_for('visitor_offers')}}" target="_blank">معاينة الزائر</a></div>
+<div class="card"><h3>الأقسام الرئيسية</h3><div class="action-grid"><a href="{{url_for('properties')}}">🏠 العقارات<span>إضافة ومتابعة العقارات</span></a><a href="{{url_for('offers')}}">📣 العروض<span>العروض الظاهرة للزوار</span></a><a href="{{url_for('contacts', category='customers')}}">👥 العملاء<span>أرقام ورسائل العملاء</span></a><a href="{{url_for('marketers')}}">🤝 المسوقين الخارجيين<span>ملفات، عمولات، صرفيات</span></a>{% if current_user.role in ['admin','executive'] %}<a href="{{url_for('finance')}}">💰 الإدارة المالية<span>بيع، عمولات، أرصدة</span></a><a href="{{url_for('backups_page')}}">📦 النسخ الاحتياطي<span>حفظ واسترجاع البيانات</span></a>{% endif %}<a href="{{url_for('visitor_offers')}}" target="_blank">👁️ معاينة الزائر<span>عرض الموقع كما يراه العميل</span></a><a href="{{url_for('system_health')}}">🛠️ صيانة النظام<span>الأخطاء والإصلاح التلقائي</span></a></div></div>
+<h3>أفضل المسوقين الخارجيين</h3>
+<table><tr><th>المسوق</th><th>العروض</th><th>المبيعات</th><th>العمولة</th><th>الرصيد</th></tr>{% for m,st in top %}<tr><td><a href="{{url_for('marketer_detail',uid=m.id)}}">{{m.name}}</a></td><td>{{st.offers_count + st.properties_count}}</td><td>{{st.total_sales|sar}}</td><td>{{st.total_commission|sar}}</td><td>{{st.balance|sar}}</td></tr>{% endfor %}</table>
 {% endblock %}

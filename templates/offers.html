@@ -9,7 +9,7 @@
 {% if current_user.role in ['admin','executive','marketer'] %}
 <form id="offerForm" method="post" enctype="multipart/form-data" onsubmit="clearDraft('offerForm')">
   <div class="autosave" id="offerForm_note">بيانات العرض تحفظ كمسودة تلقائياً، والصور تحفظ عند الضغط على إضافة العرض.</div>
-  <div class="row"><input name="title" placeholder="اسم المشروع مثل: فلة الحمراء"><input name="price" placeholder="السعر"><input type="file" name="images" accept="image/*" multiple><select name="status"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select>{% if current_user.role in ['admin','executive'] %}<select name="marketer_id"><option value="">اختر المسوق - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.full_name or m.username}}</option>{% endfor %}</select>{% endif %}</div>
+  <div class="row"><input name="title" placeholder="اسم المشروع مثل: فلة الحمراء"><input name="price" placeholder="السعر"><input type="file" name="images" accept="image/*" multiple><select name="status"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select>{% if current_user.role in ['admin','executive'] %}<select name="ext_marketer_id"><option value="">اختر المسوق الخارجي - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select>{% endif %}</div>
   <p class="small">اختر أكثر من صورة: الصورة الأولى تظهر كصورة رئيسية للزائر، وباقي الصور تظهر داخل تفاصيل المشروع.</p>
   <textarea name="description" placeholder="تفاصيل المشروع: الحي، المساحة، الغرف، الضمانات، المميزات، الموقع..."></textarea>
   <button class="btn gold">إضافة العرض سحابياً</button>

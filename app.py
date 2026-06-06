@@ -40,6 +40,20 @@ class User(db.Model):
     def set_password(self,password): self.password_hash=generate_password_hash(password)
     def check_password(self,password): return check_password_hash(self.password_hash,password)
 
+
+class ExternalMarketer(db.Model):
+    __tablename__='external_marketers'
+    id=db.Column(db.Integer, primary_key=True)
+    name=db.Column(db.Text, nullable=False, default='')
+    phone=db.Column(db.Text, default='')
+    email=db.Column(db.Text, default='')
+    company=db.Column(db.Text, default='')
+    source=db.Column(db.Text, default='خارجي')
+    commission_rate=db.Column(db.Float, default=2.5)
+    status=db.Column(db.String(20), default='active', index=True)
+    notes=db.Column(db.Text, default='')
+    created_at=db.Column(db.DateTime, default=datetime.utcnow)
+
 class Property(db.Model):
     __tablename__='properties'
     id=db.Column(db.Integer, primary_key=True)
@@ -49,6 +63,7 @@ class Property(db.Model):
     specs=db.Column(db.Text, default='')
     status=db.Column(db.String(20), default='available', index=True)
     marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
 
 class Contact(db.Model):
@@ -70,6 +85,7 @@ class Offer(db.Model):
     images_data=db.Column(db.Text, default='[]')
     status=db.Column(db.String(20), default='available', index=True)
     marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
     def images_list(self):
         items=[]
@@ -94,7 +110,8 @@ class CustomerMessage(db.Model):
 class Sale(db.Model):
     __tablename__='sales'
     id=db.Column(db.Integer, primary_key=True)
-    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
     offer_id=db.Column(db.Integer, db.ForeignKey('offers.id'), nullable=True, index=True)
     property_id=db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True, index=True)
     deal_value=db.Column(db.Float, default=0)
@@ -106,7 +123,8 @@ class Sale(db.Model):
 class Payout(db.Model):
     __tablename__='payouts'
     id=db.Column(db.Integer, primary_key=True)
-    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
     amount=db.Column(db.Float, default=0)
     notes=db.Column(db.Text, default='')
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
@@ -151,7 +169,12 @@ def init_db():
 @app.context_processor
 def inject_user():
     user=get_current_user()
-    return dict(current_user=user, role_labels=ROLE_LABELS, status_labels=STATUS_LABELS, can_delete_content=can_delete_content, can_manage_accounts=can_manage_accounts)
+    return dict(current_user=user, role_labels=ROLE_LABELS, status_labels=STATUS_LABELS, can_delete_content=can_delete_content, can_manage_accounts=can_manage_accounts, external_marketer_name=external_marketer_name)
+
+def external_marketer_name(mid):
+    if not mid: return '-'
+    m=ExternalMarketer.query.get(mid)
+    return m.name if m else '-'
 
 def get_current_user():
     uid=session.get('user_id')
@@ -186,6 +209,15 @@ def marketer_stats(user_id):
             'offers_count':Offer.query.filter_by(marketer_id=user_id).count(),'properties_count':Property.query.filter_by(marketer_id=user_id).count(),
             'sold_offers':Offer.query.filter_by(marketer_id=user_id,status='sold').count()+Property.query.filter_by(marketer_id=user_id,status='sold').count()}
 
+def external_marketer_stats(mid):
+    sales=Sale.query.filter_by(ext_marketer_id=mid).all(); payouts=Payout.query.filter_by(ext_marketer_id=mid).all()
+    total_sales=sum(money(s.deal_value) for s in sales); total_comm=sum(money(s.commission_amount) for s in sales); total_paid=sum(money(p.amount) for p in payouts)
+    return {
+        'sales_count':len(sales), 'total_sales':total_sales, 'total_commission':total_comm, 'total_paid':total_paid, 'balance':total_comm-total_paid,
+        'offers_count':Offer.query.filter_by(ext_marketer_id=mid).count(), 'properties_count':Property.query.filter_by(ext_marketer_id=mid).count(),
+        'sold_count':Offer.query.filter_by(ext_marketer_id=mid,status='sold').count()+Property.query.filter_by(ext_marketer_id=mid,status='sold').count(),
+        'active_offers':Offer.query.filter_by(ext_marketer_id=mid,status='available').count()+Property.query.filter_by(ext_marketer_id=mid,status='available').count()
+    }
 
 def safe_backup_name(name):
     name=os.path.basename(name or '')
@@ -215,7 +247,7 @@ def cleanup_old_backups():
 
 def export_data_json():
     data={}
-    models=[User,Property,Contact,Offer,CustomerMessage,Sale,Payout,SystemLog]
+    models=[User,ExternalMarketer,Property,Contact,Offer,CustomerMessage,Sale,Payout,SystemLog]
     for model in models:
         table=[]
         for row in model.query.all():
@@ -294,8 +326,8 @@ def member_entry(): return redirect(url_for('login'))
 @app.route('/dashboard')
 @login_required
 def index():
-    stats={'properties':Property.query.count(),'offers':Offer.query.filter(Offer.status!='sold').count(),'customers':Contact.query.filter_by(category='customers').count(),'marketers':User.query.filter_by(role='marketer').count(),'sales':sum(money(s.deal_value) for s in Sale.query.all())}
-    top=[(u,marketer_stats(u.id)) for u in User.query.filter_by(role='marketer').all()]
+    stats={'properties':Property.query.count(),'offers':Offer.query.filter(Offer.status!='sold').count(),'customers':Contact.query.filter_by(category='customers').count(),'marketers':ExternalMarketer.query.count(),'sales':sum(money(s.deal_value) for s in Sale.query.all())}
+    top=[(m,external_marketer_stats(m.id)) for m in ExternalMarketer.query.order_by(ExternalMarketer.id.desc()).limit(10).all()]
     return render_template('index.html', stats=stats, top=top)
 
 @app.route('/users', methods=['GET','POST'])
@@ -336,16 +368,58 @@ def update_user_permissions(uid):
     if user.role=='admin': user.can_delete=True; user.can_manage_users=True; user.is_active=True
     db.session.commit(); flash('تم تحديث بيانات وصلاحيات المستخدم'); return redirect(url_for('users'))
 
-@app.route('/marketers')
+@app.route('/marketers', methods=['GET','POST'])
 @login_required
 def marketers():
-    rows=User.query.filter_by(role='marketer').order_by(User.id.desc()).all()
-    return render_template('marketers.html', rows=[(u,marketer_stats(u.id)) for u in rows])
-@app.route('/marketers/<int:uid>')
+    if get_current_user().role not in ['admin','executive']:
+        flash('إدارة المسوقين الخارجيين مخصصة للإدارة فقط'); return redirect(url_for('index'))
+    if request.method=='POST':
+        name=request.form.get('name','').strip()
+        if not name:
+            flash('اسم المسوق مطلوب'); return redirect(url_for('marketers'))
+        row=ExternalMarketer(
+            name=name, phone=request.form.get('phone',''), email=request.form.get('email',''),
+            company=request.form.get('company',''), source=request.form.get('source','خارجي'),
+            commission_rate=money(request.form.get('commission_rate',2.5)),
+            status=request.form.get('status','active'), notes=request.form.get('notes','')
+        )
+        db.session.add(row); db.session.commit(); flash('تم إضافة المسوق الخارجي بنجاح')
+        return redirect(url_for('marketer_detail',uid=row.id))
+    rows=ExternalMarketer.query.order_by(ExternalMarketer.id.desc()).all()
+    return render_template('marketers.html', rows=[(m,external_marketer_stats(m.id)) for m in rows])
+
+@app.route('/marketers/<int:uid>', methods=['GET','POST'])
 @login_required
 def marketer_detail(uid):
-    u=User.query.get_or_404(uid); st=marketer_stats(uid)
-    return render_template('marketer_detail.html', u=u, st=st, sales=Sale.query.filter_by(marketer_id=uid).order_by(Sale.id.desc()).all(), payouts=Payout.query.filter_by(marketer_id=uid).order_by(Payout.id.desc()).all())
+    if get_current_user().role not in ['admin','executive']:
+        flash('إدارة المسوقين الخارجيين مخصصة للإدارة فقط'); return redirect(url_for('index'))
+    m=ExternalMarketer.query.get_or_404(uid)
+    if request.method=='POST':
+        action=request.form.get('action')
+        if action=='update':
+            m.name=request.form.get('name','').strip() or m.name
+            m.phone=request.form.get('phone',''); m.email=request.form.get('email',''); m.company=request.form.get('company','')
+            m.source=request.form.get('source','خارجي'); m.commission_rate=money(request.form.get('commission_rate',m.commission_rate)); m.status=request.form.get('status','active'); m.notes=request.form.get('notes','')
+            db.session.commit(); flash('تم تحديث بيانات المسوق')
+        elif action=='sale':
+            value=money(request.form.get('deal_value')); rate=money(request.form.get('commission_rate') or m.commission_rate); comm=value*rate/100
+            db.session.add(Sale(ext_marketer_id=m.id, offer_id=request.form.get('offer_id') or None, property_id=request.form.get('property_id') or None, deal_value=value, commission_rate=rate, commission_amount=comm, notes=request.form.get('notes','')))
+            db.session.commit(); flash('تم تسجيل الصفقة واحتساب العمولة')
+        elif action=='payout':
+            db.session.add(Payout(ext_marketer_id=m.id, amount=money(request.form.get('amount')), notes=request.form.get('notes','')))
+            db.session.commit(); flash('تم تسجيل صرف مبلغ للمسوق')
+        return redirect(url_for('marketer_detail',uid=m.id))
+    st=external_marketer_stats(uid)
+    return render_template('marketer_detail.html', m=m, st=st, sales=Sale.query.filter_by(ext_marketer_id=uid).order_by(Sale.id.desc()).all(), payouts=Payout.query.filter_by(ext_marketer_id=uid).order_by(Payout.id.desc()).all(), offers=Offer.query.filter(Offer.status!='sold').all(), properties=Property.query.filter(Property.status!='sold').all())
+
+@app.route('/marketers/delete/<int:uid>', methods=['POST'])
+@login_required
+def marketer_delete(uid):
+    if get_current_user().role!='admin':
+        flash('حذف المسوقين مخصص للمدير العام فقط'); return redirect(url_for('marketers'))
+    m=ExternalMarketer.query.get_or_404(uid)
+    db.session.delete(m); db.session.commit(); flash('تم حذف المسوق الخارجي')
+    return redirect(url_for('marketers'))
 
 @app.route('/finance', methods=['GET','POST'])
 @login_required
@@ -355,16 +429,16 @@ def finance():
     if request.method=='POST':
         action=request.form.get('action'); marketer_id=int(request.form.get('marketer_id') or 0)
         if action=='sale':
-            value=money(request.form.get('deal_value')); rate=money(request.form.get('commission_rate') or User.query.get(marketer_id).commission_rate); comm=value*rate/100
-            sale=Sale(marketer_id=marketer_id, offer_id=request.form.get('offer_id') or None, property_id=request.form.get('property_id') or None, deal_value=value, commission_rate=rate, commission_amount=comm, notes=request.form.get('notes',''))
+            value=money(request.form.get('deal_value')); rate=money(request.form.get('commission_rate') or ExternalMarketer.query.get(marketer_id).commission_rate); comm=value*rate/100
+            sale=Sale(ext_marketer_id=marketer_id, offer_id=request.form.get('offer_id') or None, property_id=request.form.get('property_id') or None, deal_value=value, commission_rate=rate, commission_amount=comm, notes=request.form.get('notes',''))
             db.session.add(sale)
             if sale.offer_id: Offer.query.get(int(sale.offer_id)).status='sold'
             if sale.property_id: Property.query.get(int(sale.property_id)).status='sold'
             flash('تم تسجيل البيع وحساب العمولة وإخفاء العرض المباع من صفحة الزائر')
         elif action=='payout':
-            db.session.add(Payout(marketer_id=marketer_id, amount=money(request.form.get('amount')), notes=request.form.get('notes',''))); flash('تم تسجيل صرف العمولة وخصمها من الرصيد')
+            db.session.add(Payout(ext_marketer_id=marketer_id, amount=money(request.form.get('amount')), notes=request.form.get('notes',''))); flash('تم تسجيل صرف العمولة وخصمها من الرصيد')
         db.session.commit(); return redirect(url_for('finance'))
-    marketers=User.query.filter_by(role='marketer').all()
+    marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all()
     return render_template('finance.html', marketers=marketers, offers=Offer.query.filter(Offer.status!='sold').all(), properties=Property.query.filter(Property.status!='sold').all(), sales=Sale.query.order_by(Sale.id.desc()).all(), payouts=Payout.query.order_by(Payout.id.desc()).all())
 
 @app.route('/visitor')
@@ -390,13 +464,14 @@ def properties():
     if request.method=='POST':
         if user.role not in ['admin','executive','marketer']: flash('ليس لديك صلاحية إضافة عقار'); return redirect(url_for('properties'))
         mid=int(request.form.get('marketer_id') or (user.id if user.role=='marketer' else 0) or 0) or None
-        row=Property(name=request.form.get('name',''), location=request.form.get('location',''), price=request.form.get('price',''), specs=request.form.get('specs',''), status=request.form.get('status','available'), marketer_id=mid)
+        ext_mid=int(request.form.get('ext_marketer_id') or 0) or None
+        row=Property(name=request.form.get('name',''), location=request.form.get('location',''), price=request.form.get('price',''), specs=request.form.get('specs',''), status=request.form.get('status','available'), marketer_id=mid, ext_marketer_id=ext_mid)
         db.session.add(row); db.session.commit(); flash('تم حفظ العقار تلقائياً'); return redirect(url_for('properties'))
     q=request.args.get('q','').strip(); query=Property.query
     if user.role=='marketer': query=query.filter_by(marketer_id=user.id)
     if q:
         like=f'%{q}%'; query=query.filter(db.or_(Property.name.ilike(like),Property.location.ilike(like),Property.price.ilike(like),Property.specs.ilike(like)))
-    return render_template('properties.html', rows=query.order_by(Property.id.desc()).all(), q=q, marketers=User.query.filter_by(role='marketer').all())
+    return render_template('properties.html', rows=query.order_by(Property.id.desc()).all(), q=q, marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all())
 @app.route('/properties/<int:pid>')
 @login_required
 def property_detail(pid): return render_template('property_detail.html', row=Property.query.get_or_404(pid))
@@ -451,11 +526,12 @@ def offers():
                 raw=file.read()
                 if raw: uploaded.append(f"data:{file.mimetype or 'image/jpeg'};base64,"+base64.b64encode(raw).decode('utf-8'))
         mid=int(request.form.get('marketer_id') or (user.id if user.role=='marketer' else 0) or 0) or None
-        row=Offer(title=request.form.get('title',''),description=request.form.get('description',''),price=request.form.get('price',''),image_data=uploaded[0] if uploaded else '',images_data=json.dumps(uploaded[1:] if len(uploaded)>1 else [],ensure_ascii=False),status=request.form.get('status','available'),marketer_id=mid)
+        ext_mid=int(request.form.get('ext_marketer_id') or 0) or None
+        row=Offer(title=request.form.get('title',''),description=request.form.get('description',''),price=request.form.get('price',''),image_data=uploaded[0] if uploaded else '',images_data=json.dumps(uploaded[1:] if len(uploaded)>1 else [],ensure_ascii=False),status=request.form.get('status','available'),marketer_id=mid, ext_marketer_id=ext_mid)
         db.session.add(row); db.session.commit(); flash('تم إضافة العرض وحفظه'); return redirect(url_for('offers'))
     query=Offer.query
     if user.role=='marketer': query=query.filter_by(marketer_id=user.id)
-    return render_template('offers.html', offers=query.order_by(Offer.id.desc()).all(), messages=CustomerMessage.query.order_by(CustomerMessage.id.desc()).all(), marketers=User.query.filter_by(role='marketer').all())
+    return render_template('offers.html', offers=query.order_by(Offer.id.desc()).all(), messages=CustomerMessage.query.order_by(CustomerMessage.id.desc()).all(), marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all())
 @app.route('/messages', methods=['POST'])
 @login_required
 def messages():
