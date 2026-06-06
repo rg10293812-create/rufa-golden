@@ -15,6 +15,11 @@
     <a class="back" href="{{ url_for('landing') }}">الرجوع للقائمة الرئيسية</a>
   </header>
   <main class="wrap">
+    <form method="get" style="background:white;border-radius:18px;padding:16px;margin-bottom:22px;box-shadow:0 10px 25px rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 1fr 120px;gap:10px">
+      <input name="q" value="{{q or ''}}" placeholder="ابحث باسم المشروع أو السعر أو الوصف" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
+      <input name="location" value="{{location or ''}}" placeholder="الحي / الموقع" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
+      <button style="background:#0e281d;color:white;border:0;border-radius:12px;font-weight:bold">بحث</button>
+    </form>
     {% if offers %}
     <section class="grid">
       {% for offer in offers %}

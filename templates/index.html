@@ -1,16 +1,16 @@
 {% extends 'base.html' %}{% block content %}
-<h2>النظام السحابي</h2>
-<p class="small">أي إضافة أو حذف يتم حفظه مباشرة في قاعدة البيانات السحابية، ويظهر على جميع الأجهزة التي تفتح نفس الرابط.</p>
-<div class="card">
-<h3>صلاحيتك الحالية: {{role_labels.get(current_user.role,current_user.role)}}</h3>
-{% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات، ومنها إضافة المستخدمين وإدارة الحسابات.</p>{% elif current_user.role == 'marketer' %}<p>يمكنك إضافة العقارات والعروض والأرقام والرسائل، بدون إدارة المستخدمين أو حذف البيانات.</p>{% else %}<p>يمكنك المشاهدة والبحث فقط.</p>{% endif %}
+<h2>لوحة تحكم روفا جولدن</h2>
+<p class="small">لوحة احترافية مختصرة تعرض حالة النظام، العروض، المسوقين، والمبيعات.</p>
+<div class="dash">
+  <div class="stat">العقارات<b>{{stats.properties}}</b></div>
+  <div class="stat">العروض النشطة<b>{{stats.offers}}</b></div>
+  <div class="stat">العملاء<b>{{stats.customers}}</b></div>
+  <div class="stat">المسوقين<b>{{stats.marketers}}</b></div>
+  <div class="stat">إجمالي المبيعات<b>{{stats.sales|sar}}</b></div>
 </div>
-<div class="nav">
-<a class="btn gray" href="{{url_for('landing')}}">القائمة الرئيسية</a>
-<a class="btn" href="{{url_for('visitor_offers')}}" target="_blank">معاينة صفحة الزائر</a>
-<a class="btn green" href="{{url_for('properties')}}">العقارات</a>
-<a class="btn gold" href="{{url_for('contacts', category='marketers')}}">الأرقام</a>
-<a class="btn brown" href="{{url_for('offers')}}">العروض</a>
-{% if can_manage_accounts(current_user) %}<a class="btn black" href="{{url_for('users')}}">إدارة المستخدمين</a>{% endif %}
-</div>
+<div class="card"><h3>صلاحيتك الحالية: {{role_labels.get(current_user.role,current_user.role)}}</h3>
+{% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات.</p>{% elif current_user.role == 'marketer' %}<p>تستطيع إضافة ومتابعة عروضك وعقاراتك وحسابك المالي.</p>{% else %}<p>حسب الصلاحية المسندة لحسابك.</p>{% endif %}</div>
+<h3>أداء المسوقين</h3>
+<table><tr><th>المسوق</th><th>العروض</th><th>المبيعات</th><th>العمولة</th><th>الرصيد</th></tr>{% for u,st in top %}<tr><td><a href="{{url_for('marketer_detail',uid=u.id)}}">{{u.full_name or u.username}}</a></td><td>{{st.offers_count}}</td><td>{{st.total_sales|sar}}</td><td>{{st.total_commission|sar}}</td><td>{{st.balance|sar}}</td></tr>{% endfor %}</table>
+<div class="nav"><a class="btn green" href="{{url_for('properties')}}">العقارات</a><a class="btn brown" href="{{url_for('offers')}}">العروض</a><a class="btn black" href="{{url_for('marketers')}}">إدارة المسوقين</a><a class="btn gold" href="{{url_for('finance')}}">الإدارة المالية</a><a class="btn" href="{{url_for('visitor_offers')}}" target="_blank">معاينة الزائر</a></div>
 {% endblock %}
