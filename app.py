@@ -531,7 +531,7 @@ def offers():
         db.session.add(row); db.session.commit(); flash('تم إضافة العرض وحفظه'); return redirect(url_for('offers'))
     query=Offer.query
     if user.role=='marketer': query=query.filter_by(marketer_id=user.id)
-    return render_template('offers.html', offers=query.order_by(Offer.id.desc()).all(), messages=CustomerMessage.query.order_by(CustomerMessage.id.desc()).all(), marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all())
+    return render_template('offers.html', offers=query.order_by(Offer.id.desc()).all(), marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all())
 @app.route('/messages', methods=['POST'])
 @login_required
 def messages():
@@ -540,6 +540,8 @@ def messages():
 @app.route('/offers/status/<int:oid>', methods=['POST'])
 @login_required
 def offer_status(oid):
+    if get_current_user().role not in ['admin','executive','marketer']:
+        flash('ليس لديك صلاحية تعديل حالة العرض'); return redirect(url_for('offers'))
     row=Offer.query.get_or_404(oid); row.status=request.form.get('status','available'); db.session.commit(); flash('تم تحديث حالة العرض'); return redirect(url_for('offers'))
 @app.route('/offers/delete/<int:oid>', methods=['POST'])
 @login_required
