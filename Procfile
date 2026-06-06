@@ -495,31 +495,75 @@ def external_deal_delete(deal_id):
 @app.route('/marketers', methods=['GET','POST'])
 @login_required
 def marketers():
-    # تم استبدال إدارة المسوقين الخارجيين بقسم الصفقات الخارجية
-    flash('تم استبدال هذا القسم بقسم الصفقات الخارجية')
-    return redirect(url_for('external_deals'))
+    if get_current_user().role not in ['admin','executive']:
+        flash('إدارة المسوقين الخارجيين مخصصة للإدارة فقط'); return redirect(url_for('index'))
+    if request.method=='POST':
+        name=request.form.get('name','').strip()
+        if not name:
+            flash('اسم المسوق مطلوب'); return redirect(url_for('marketers'))
+        row=ExternalMarketer(
+            name=name, phone=request.form.get('phone',''), email=request.form.get('email',''),
+            company=request.form.get('company',''), source=request.form.get('source','خارجي'),
+            commission_rate=money(request.form.get('commission_rate',2.5)),
+            status=request.form.get('status','active'), notes=request.form.get('notes','')
+        )
+        db.session.add(row); db.session.commit(); flash('تم إضافة المسوق الخارجي بنجاح')
+        return redirect(url_for('marketer_detail',uid=row.id))
+    rows=ExternalMarketer.query.order_by(ExternalMarketer.id.desc()).all()
+    return render_template('marketers.html', rows=[(m,external_marketer_stats(m.id)) for m in rows])
 
 @app.route('/marketers/<int:uid>', methods=['GET','POST'])
 @login_required
 def marketer_detail(uid):
-    flash('تم استبدال هذا القسم بقسم الصفقات الخارجية')
-    return redirect(url_for('external_deals'))
+    if get_current_user().role not in ['admin','executive']:
+        flash('إدارة المسوقين الخارجيين مخصصة للإدارة فقط'); return redirect(url_for('index'))
+    m=ExternalMarketer.query.get_or_404(uid)
+    if request.method=='POST':
+        action=request.form.get('action')
+        if action=='update':
+            m.name=request.form.get('name','').strip() or m.name
+            m.phone=request.form.get('phone',''); m.email=request.form.get('email',''); m.company=request.form.get('company','')
+            m.source=request.form.get('source','خارجي'); m.commission_rate=money(request.form.get('commission_rate',m.commission_rate)); m.status=request.form.get('status','active'); m.notes=request.form.get('notes','')
+            db.session.commit(); flash('تم تحديث بيانات المسوق')
+        elif action=='sale':
+            value=money(request.form.get('deal_value')); rate=money(request.form.get('commission_rate') or m.commission_rate); comm=value*rate/100
+            db.session.add(Sale(ext_marketer_id=m.id, offer_id=request.form.get('offer_id') or None, property_id=request.form.get('property_id') or None, deal_value=value, commission_rate=rate, commission_amount=comm, notes=request.form.get('notes','')))
+            db.session.commit(); flash('تم تسجيل الصفقة واحتساب العمولة')
+        elif action=='payout':
+            db.session.add(Payout(ext_marketer_id=m.id, amount=money(request.form.get('amount')), notes=request.form.get('notes','')))
+            db.session.commit(); flash('تم تسجيل صرف مبلغ للمسوق')
+        return redirect(url_for('marketer_detail',uid=m.id))
+    st=external_marketer_stats(uid)
+    return render_template('marketer_detail.html', m=m, st=st, sales=Sale.query.filter_by(ext_marketer_id=uid).order_by(Sale.id.desc()).all(), payouts=Payout.query.filter_by(ext_marketer_id=uid).order_by(Payout.id.desc()).all(), offers=Offer.query.filter(Offer.status!='sold').all(), properties=Property.query.filter(Property.status!='sold').all())
 
 @app.route('/marketers/delete/<int:uid>', methods=['POST'])
 @login_required
 def marketer_delete(uid):
     if get_current_user().role!='admin':
-        flash('هذا القسم القديم مغلق'); return redirect(url_for('external_deals'))
+        flash('حذف المسوقين مخصص للمدير العام فقط'); return redirect(url_for('marketers'))
     m=ExternalMarketer.query.get_or_404(uid)
     db.session.delete(m); db.session.commit(); flash('تم حذف المسوق الخارجي')
-    return redirect(url_for('external_deals'))
+    return redirect(url_for('marketers'))
 
 @app.route('/finance', methods=['GET','POST'])
 @login_required
 def finance():
-    # تم إلغاء الإدارة المالية المستقلة ودمجها داخل الصفقات الخارجية
-    flash('تم دمج الإدارة المالية داخل قسم الصفقات الخارجية')
-    return redirect(url_for('external_deals'))
+    if get_current_user().role not in ['admin','executive']:
+        flash('ليس لديك صلاحية الإدارة المالية'); return redirect(url_for('index'))
+    if request.method=='POST':
+        action=request.form.get('action'); marketer_id=int(request.form.get('marketer_id') or 0)
+        if action=='sale':
+            value=money(request.form.get('deal_value')); rate=money(request.form.get('commission_rate') or ExternalMarketer.query.get(marketer_id).commission_rate); comm=value*rate/100
+            sale=Sale(ext_marketer_id=marketer_id, offer_id=request.form.get('offer_id') or None, property_id=request.form.get('property_id') or None, deal_value=value, commission_rate=rate, commission_amount=comm, notes=request.form.get('notes',''))
+            db.session.add(sale)
+            if sale.offer_id: Offer.query.get(int(sale.offer_id)).status='sold'
+            if sale.property_id: Property.query.get(int(sale.property_id)).status='sold'
+            flash('تم تسجيل البيع وحساب العمولة وإخفاء العرض المباع من صفحة الزائر')
+        elif action=='payout':
+            db.session.add(Payout(ext_marketer_id=marketer_id, amount=money(request.form.get('amount')), notes=request.form.get('notes',''))); flash('تم تسجيل صرف العمولة وخصمها من الرصيد')
+        db.session.commit(); return redirect(url_for('finance'))
+    marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all()
+    return render_template('finance.html', marketers=marketers, offers=Offer.query.filter(Offer.status!='sold').all(), properties=Property.query.filter(Property.status!='sold').all(), sales=Sale.query.order_by(Sale.id.desc()).all(), payouts=Payout.query.order_by(Payout.id.desc()).all())
 
 @app.route('/visitor')
 def visitor_offers():
