@@ -147,8 +147,6 @@ def init_db():
         admin.can_delete=True; admin.can_manage_users=True; admin.is_active=True
     db.session.commit()
 
-with app.app_context(): init_db()
-start_backup_scheduler()
 
 @app.context_processor
 def inject_user():
@@ -269,6 +267,11 @@ def start_backup_scheduler():
         scheduler.start()
     except Exception as exc:
         print('Backup scheduler disabled:', exc)
+
+# تهيئة قاعدة البيانات ثم تشغيل النسخ الاحتياطي التلقائي بعد تعريف الدالة
+with app.app_context():
+    init_db()
+start_backup_scheduler()
 
 @app.template_filter('sar')
 def sar(v): return f"{money(v):,.2f} ريال"
