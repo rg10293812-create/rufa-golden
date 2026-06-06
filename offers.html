@@ -1,13 +1,12 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>العقارات</h2>
-<form method="get"><input name="q" value="{{q}}" placeholder="بحث"><button class="btn">بحث</button></form>
-{% if current_user.role in ['admin','marketer'] %}
-<form id="propertyForm" method="post" onsubmit="clearDraft('propertyForm')">
-<div class="autosave" id="propertyForm_note">الحقول تحفظ كمسودة تلقائياً على الجهاز، وعند الضغط على حفظ يتم حفظ العقار على السحابة.</div>
-<div class="row"><input name="name" placeholder="اسم العقار"><input name="location" placeholder="الموقع"><input name="price" placeholder="السعر"></div>
-<textarea name="specs" placeholder="المواصفات كاملة بالترتيب"></textarea>
-<button class="btn green">حفظ العقار سحابياً</button>
-</form><script>loadDraft('propertyForm')</script>
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a>
+<h2>{{title}}</h2>
+<div><a class="btn" href="{{url_for('contacts',category='marketers')}}">أرقام المسوقين</a><a class="btn" href="{{url_for('contacts',category='customers')}}">أرقام الزباين</a><a class="btn" href="{{url_for('contacts',category='developers')}}">أرقام المطورين</a></div>
+{% if current_user.role in ['admin','executive','marketer'] %}
+<form id="contactForm" method="post" onsubmit="clearDraft('contactForm')">
+<div class="autosave" id="contactForm_note">الحقول تحفظ كمسودة تلقائياً، وعند الضغط على حفظ يتم حفظ الرقم على السحابة.</div>
+<div class="row"><input name="name" placeholder="الاسم"><input name="phone" placeholder="رقم الجوال"><input name="notes" placeholder="ملاحظات"></div><button class="btn green">حفظ الرقم سحابياً</button></form><script>loadDraft('contactForm')</script>
 {% endif %}
-<table><tr><th>العقار</th><th>الموقع</th><th>السعر</th><th>الخيارات</th></tr>{% for r in rows %}<tr><td>{{r.name}}</td><td>{{r.location}}</td><td>{{r.price}}</td><td><a class="btn" href="{{url_for('property_detail',pid=r.id)}}">رؤية التفاصيل</a>{% if current_user.role=='admin' %}<form method="post" action="{{url_for('delete_property',pid=r.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form>{% endif %}</td></tr>{% endfor %}</table>
+{% if current_user.role in ['admin','executive','marketer'] %}<form method="post" action="{{url_for('send_whatsapp')}}"><input type="hidden" name="category" value="{{category}}"><textarea name="message" placeholder="اكتب الرسالة هنا"></textarea><label><input type="checkbox" onclick="toggleAll(this)" style="width:auto"> تحديد الكل</label><button class="btn gold">إرسال رسالة واتساب للمحدد</button>{% endif %}
+<table><tr>{% if current_user.role in ['admin','executive','marketer'] %}<th>تحديد</th>{% endif %}<th>الاسم</th><th>الجوال</th><th>ملاحظات</th>{% if can_delete_content(current_user) %}<th>حذف</th>{% endif %}</tr>{% for r in rows %}<tr>{% if current_user.role in ['admin','executive','marketer'] %}<td><input type="checkbox" name="selected" value="{{r.id}}" style="width:auto"></td>{% endif %}<td>{{r.name}}</td><td>{{r.phone}}</td><td>{{r.notes}}</td>{% if can_delete_content(current_user) %}<td><form method="post" action="{{url_for('delete_contact',cid=r.id,category=category)}}"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table>{% if current_user.role in ['admin','executive','marketer'] %}</form>{% endif %}
 {% endblock %}
