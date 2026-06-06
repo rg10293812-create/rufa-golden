@@ -129,6 +129,38 @@ class Payout(db.Model):
     notes=db.Column(db.Text, default='')
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
 
+
+class ExternalDeal(db.Model):
+    __tablename__='external_deals'
+    id=db.Column(db.Integer, primary_key=True)
+    title=db.Column(db.Text, nullable=False, default='')
+    client_name=db.Column(db.Text, default='')
+    client_phone=db.Column(db.Text, default='')
+    property_name=db.Column(db.Text, default='')
+    deal_value=db.Column(db.Float, default=0)
+    company_rate=db.Column(db.Float, default=2.5)
+    company_commission=db.Column(db.Float, default=0)
+    ext_marketer_name=db.Column(db.Text, default='')
+    ext_marketer_phone=db.Column(db.Text, default='')
+    ext_marketer_rate=db.Column(db.Float, default=0)
+    ext_marketer_amount=db.Column(db.Float, default=0)
+    company_net=db.Column(db.Float, default=0)
+    paid_amount=db.Column(db.Float, default=0)
+    status=db.Column(db.String(20), default='open', index=True)
+    notes=db.Column(db.Text, default='')
+    created_at=db.Column(db.DateTime, default=datetime.utcnow)
+
+class DealShare(db.Model):
+    __tablename__='deal_shares'
+    id=db.Column(db.Integer, primary_key=True)
+    deal_id=db.Column(db.Integer, db.ForeignKey('external_deals.id'), nullable=False, index=True)
+    user_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    member_name=db.Column(db.Text, default='')
+    rate=db.Column(db.Float, default=0)
+    amount=db.Column(db.Float, default=0)
+    notes=db.Column(db.Text, default='')
+    created_at=db.Column(db.DateTime, default=datetime.utcnow)
+
 class SystemLog(db.Model):
     __tablename__='system_logs'
     id=db.Column(db.Integer, primary_key=True)
@@ -247,7 +279,7 @@ def cleanup_old_backups():
 
 def export_data_json():
     data={}
-    models=[User,ExternalMarketer,Property,Contact,Offer,CustomerMessage,Sale,Payout,SystemLog]
+    models=[User,ExternalMarketer,Property,Contact,Offer,CustomerMessage,Sale,Payout,ExternalDeal,DealShare,SystemLog]
     for model in models:
         table=[]
         for row in model.query.all():
@@ -326,9 +358,10 @@ def member_entry(): return redirect(url_for('login'))
 @app.route('/dashboard')
 @login_required
 def index():
-    stats={'properties':Property.query.count(),'offers':Offer.query.filter(Offer.status!='sold').count(),'customers':Contact.query.filter_by(category='customers').count(),'marketers':ExternalMarketer.query.count(),'sales':sum(money(s.deal_value) for s in Sale.query.all())}
-    top=[(m,external_marketer_stats(m.id)) for m in ExternalMarketer.query.order_by(ExternalMarketer.id.desc()).limit(10).all()]
-    return render_template('index.html', stats=stats, top=top)
+    dst=deal_stats()
+    stats={'properties':Property.query.count(),'offers':Offer.query.filter(Offer.status!='sold').count(),'deals':dst['count'],'deal_value':dst['total_value'],'company_net':dst['net']}
+    recent=ExternalDeal.query.order_by(ExternalDeal.id.desc()).limit(10).all()
+    return render_template('index.html', stats=stats, recent=recent, dst=dst)
 
 @app.route('/users', methods=['GET','POST'])
 @login_required
@@ -367,6 +400,97 @@ def update_user_permissions(uid):
     user.can_delete=request.form.get('can_delete')=='on'; user.can_manage_users=request.form.get('can_manage_users')=='on'; user.is_active=request.form.get('is_active')=='on'
     if user.role=='admin': user.can_delete=True; user.can_manage_users=True; user.is_active=True
     db.session.commit(); flash('تم تحديث بيانات وصلاحيات المستخدم'); return redirect(url_for('users'))
+
+
+def deal_calc_values(deal_value, company_rate, ext_rate, internal_rates):
+    value=money(deal_value)
+    company_rate=money(company_rate)
+    ext_rate=money(ext_rate)
+    company_comm=value*company_rate/100
+    ext_amount=value*ext_rate/100
+    internal_total=sum(value*money(r)/100 for r in internal_rates)
+    company_net=company_comm-ext_amount-internal_total
+    return value, company_rate, company_comm, ext_rate, ext_amount, internal_total, company_net
+
+def deal_stats():
+    deals=ExternalDeal.query.all()
+    total_value=sum(money(d.deal_value) for d in deals)
+    company_comm=sum(money(d.company_commission) for d in deals)
+    ext=sum(money(d.ext_marketer_amount) for d in deals)
+    internal=sum(money(s.amount) for s in DealShare.query.all())
+    paid=sum(money(d.paid_amount) for d in deals)
+    net=sum(money(d.company_net) for d in deals)
+    return {'count':len(deals),'total_value':total_value,'company_commission':company_comm,'external_amount':ext,'internal_amount':internal,'paid':paid,'net':net}
+
+@app.route('/external-deals', methods=['GET','POST'])
+@login_required
+def external_deals():
+    if get_current_user().role not in ['admin','executive']:
+        flash('الصفقات الخارجية مخصصة للإدارة فقط'); return redirect(url_for('index'))
+    users=User.query.filter(User.role.in_(['admin','executive','marketer']), User.is_active==True).order_by(User.full_name).all()
+    if request.method=='POST':
+        value=money(request.form.get('deal_value'))
+        company_rate=money(request.form.get('company_rate',2.5))
+        ext_rate=money(request.form.get('ext_marketer_rate',0))
+        share_user_ids=request.form.getlist('share_user_id')
+        share_rates=request.form.getlist('share_rate')
+        internal_rates=[money(r) for r in share_rates if money(r)>0]
+        value, company_rate, company_comm, ext_rate, ext_amount, internal_total, company_net=deal_calc_values(value,company_rate,ext_rate,internal_rates)
+        deal=ExternalDeal(
+            title=request.form.get('title','').strip() or 'صفقة خارجية',
+            client_name=request.form.get('client_name',''), client_phone=request.form.get('client_phone',''),
+            property_name=request.form.get('property_name',''), deal_value=value,
+            company_rate=company_rate, company_commission=company_comm,
+            ext_marketer_name=request.form.get('ext_marketer_name',''), ext_marketer_phone=request.form.get('ext_marketer_phone',''),
+            ext_marketer_rate=ext_rate, ext_marketer_amount=ext_amount, company_net=company_net,
+            status=request.form.get('status','open'), notes=request.form.get('notes','')
+        )
+        db.session.add(deal); db.session.flush()
+        for uid,rate in zip(share_user_ids, share_rates):
+            rate=money(rate)
+            if rate<=0: continue
+            user=User.query.get(int(uid)) if uid else None
+            db.session.add(DealShare(deal_id=deal.id, user_id=user.id if user else None, member_name=(user.full_name or user.username) if user else '', rate=rate, amount=value*rate/100, notes='نسبة عضو داخلي'))
+        db.session.commit(); flash('تم إنشاء الصفقة الخارجية وتقسيم النسب تلقائياً')
+        return redirect(url_for('external_deal_detail', deal_id=deal.id))
+    deals=ExternalDeal.query.order_by(ExternalDeal.id.desc()).all()
+    return render_template('external_deals.html', deals=deals, users=users, st=deal_stats())
+
+@app.route('/external-deals/<int:deal_id>', methods=['GET','POST'])
+@login_required
+def external_deal_detail(deal_id):
+    if get_current_user().role not in ['admin','executive']:
+        flash('الصفقات الخارجية مخصصة للإدارة فقط'); return redirect(url_for('index'))
+    deal=ExternalDeal.query.get_or_404(deal_id)
+    users=User.query.filter(User.role.in_(['admin','executive','marketer']), User.is_active==True).order_by(User.full_name).all()
+    if request.method=='POST':
+        action=request.form.get('action')
+        if action=='payout':
+            deal.paid_amount=money(deal.paid_amount)+money(request.form.get('amount'))
+            db.session.commit(); flash('تم تسجيل مبلغ مصروف على الصفقة')
+        elif action=='status':
+            deal.status=request.form.get('status',deal.status); db.session.commit(); flash('تم تحديث حالة الصفقة')
+        elif action=='add_share':
+            uid=int(request.form.get('share_user_id') or 0); rate=money(request.form.get('share_rate'))
+            user=User.query.get(uid) if uid else None
+            if user and rate>0:
+                amount=money(deal.deal_value)*rate/100
+                db.session.add(DealShare(deal_id=deal.id,user_id=user.id,member_name=user.full_name or user.username,rate=rate,amount=amount,notes=request.form.get('notes','')))
+                deal.company_net=money(deal.company_net)-amount
+                db.session.commit(); flash('تم إضافة نسبة عضو داخلي')
+        return redirect(url_for('external_deal_detail',deal_id=deal.id))
+    shares=DealShare.query.filter_by(deal_id=deal.id).order_by(DealShare.id.desc()).all()
+    return render_template('external_deal_detail.html', deal=deal, shares=shares, users=users)
+
+@app.route('/external-deals/delete/<int:deal_id>', methods=['POST'])
+@login_required
+def external_deal_delete(deal_id):
+    if get_current_user().role!='admin':
+        flash('حذف الصفقات مخصص للمدير العام فقط'); return redirect(url_for('external_deals'))
+    deal=ExternalDeal.query.get_or_404(deal_id)
+    DealShare.query.filter_by(deal_id=deal.id).delete()
+    db.session.delete(deal); db.session.commit(); flash('تم حذف الصفقة الخارجية')
+    return redirect(url_for('external_deals'))
 
 @app.route('/marketers', methods=['GET','POST'])
 @login_required

@@ -17,8 +17,7 @@ function clearDraft(formId){const f=document.getElementById(formId); if(!f)retur
 <a class="navlink" href="{{url_for('index')}}">🏠 لوحة الأعضاء</a>
 <a class="navlink" href="{{url_for('properties')}}">🏢 العقارات</a>
 <a class="navlink" href="{{url_for('offers')}}">📢 العروض الظاهرة للزوار</a>
-{% if current_user.role in ['admin','executive','marketer'] %}<a class="navlink" href="{{url_for('contacts', category='customers')}}">👥 العملاء والأرقام</a>{% endif %}
-{% if current_user.role in ['admin','executive'] %}<a class="navlink" href="{{url_for('marketers')}}">🤝 المسوقون الخارجيون</a><a class="navlink" href="{{url_for('finance')}}">💰 الإدارة المالية</a><a class="navlink" href="{{url_for('backups_page')}}">📦 النسخ الاحتياطي</a>{% endif %}
+{% if current_user.role in ['admin','executive'] %}<a class="navlink" href="{{url_for('external_deals')}}">🤝 الصفقات الخارجية</a><a class="navlink" href="{{url_for('backups_page')}}">📦 النسخ الاحتياطي</a>{% endif %}
 {% if current_user.role == 'admin' %}<a class="navlink" href="{{url_for('system_health')}}">🛠️ صيانة النظام</a>{% endif %}
 {% if can_manage_accounts(current_user) %}<a class="navlink" href="{{url_for('users')}}">⚙️ إدارة المستخدمين</a>{% endif %}
 <a class="navlink" href="{{url_for('visitor_offers')}}" target="_blank">👁️ معاينة الزائر</a>
