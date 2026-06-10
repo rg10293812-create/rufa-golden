@@ -16,10 +16,9 @@ function clearDraft(formId){const f=document.getElementById(formId); if(!f)retur
 <div class="layout"><aside class="sidebar"><div class="brand-card"><b>{{current_user.full_name or current_user.username}}</b><span>{{role_labels.get(current_user.role,current_user.role)}}</span></div>
 <a class="navlink" href="{{url_for('index')}}">🏠 لوحة الأعضاء</a>
 <a class="navlink" href="{{url_for('properties')}}">🏢 العقارات</a>
-<a class="navlink" href="{{url_for('offers')}}">📢 العروض الظاهرة للزوار</a>
 {% if current_user.role in ['admin','executive'] %}<a class="navlink" href="{{url_for('external_deals')}}">🤝 الصفقات الخارجية</a><a class="navlink" href="{{url_for('backups_page')}}">📦 النسخ الاحتياطي</a>{% endif %}
 {% if current_user.role == 'admin' %}<a class="navlink" href="{{url_for('system_health')}}">🛠️ صيانة النظام</a>{% endif %}
-{% if can_manage_accounts(current_user) %}<a class="navlink" href="{{url_for('users')}}">⚙️ إدارة المستخدمين</a>{% endif %}
+{% if can_manage_accounts(current_user) %}<a class="navlink" href="{{url_for('users')}}">⚙️ إدارة الموظفين</a>{% endif %}
 <a class="navlink" href="{{url_for('visitor_offers')}}" target="_blank">👁️ معاينة الزائر</a>
 <a class="navlink" href="{{url_for('landing')}}">↩️ القائمة الرئيسية</a>
 <a class="navlink danger" href="{{url_for('logout')}}">🚪 تسجيل الخروج</a></aside><main class="content"><div class="wrap">

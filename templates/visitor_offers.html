@@ -10,32 +10,33 @@
 </head>
 <body>
   <header class="hero">
-    <h1>عروض روفا جولدن العقارية</h1>
-    <p>اختر المشروع لمشاهدة الصور والمواصفات والتفاصيل كاملة</p>
+    <h1>عقارات روفا جولدن</h1>
+    <p>اختر العقار لمشاهدة الصور والمواصفات والتفاصيل كاملة</p>
     <a class="back" href="{{ url_for('landing') }}">الرجوع للقائمة الرئيسية</a>
   </header>
   <main class="wrap">
-    <form method="get" style="background:white;border-radius:18px;padding:16px;margin-bottom:22px;box-shadow:0 10px 25px rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 1fr 120px;gap:10px">
-      <input name="q" value="{{q or ''}}" placeholder="ابحث باسم المشروع أو السعر أو الوصف" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
+    <form method="get" style="background:white;border-radius:18px;padding:16px;margin-bottom:22px;box-shadow:0 10px 25px rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 1fr 1fr 120px;gap:10px">
+      <input name="q" value="{{q or ''}}" placeholder="ابحث باسم العقار أو السعر أو المواصفات" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
       <input name="location" value="{{location or ''}}" placeholder="الحي / الموقع" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
+      <select name="kind" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right"><option value="all">الكل</option><option value="exclusive" {% if kind=='exclusive' %}selected{% endif %}>العروض الحصرية</option><option value="villa" {% if kind=='villa' %}selected{% endif %}>فلل</option><option value="floor" {% if kind=='floor' %}selected{% endif %}>أدوار</option><option value="apartment" {% if kind=='apartment' %}selected{% endif %}>شقق</option></select>
       <button style="background:#0e281d;color:white;border:0;border-radius:12px;font-weight:bold">بحث</button>
     </form>
     {% if offers %}
     <section class="grid">
       {% for offer in offers %}
       <a class="card" href="{{ url_for('visitor_offer_detail', oid=offer.id) }}">
-        <div class="img">{% if offer.image_data %}<img src="{{ offer.image_data }}" alt="{{ offer.title }}">{% else %}🏡{% endif %}</div>
+        <div class="img">{% if offer.image_data %}<img src="{{ offer.image_data }}" alt="{{ offer.name }}">{% else %}🏡{% endif %}</div>
         <div class="body">
-          <div class="name">{{ offer.title or 'مشروع عقاري' }}</div>
+          <div class="name">{{ offer.name or 'عقار متاح' }}</div>
           {% if offer.price %}<div class="price">{{ offer.price }}</div>{% endif %}
-          {% if offer.description %}<div class="desc">{{ offer.description }}</div>{% endif %}
+          {% if offer.specs %}<div class="desc">{{ offer.specs }}</div>{% endif %}
           <div class="details">عرض التفاصيل والصور</div>
         </div>
       </a>
       {% endfor %}
     </section>
     {% else %}
-    <div class="empty">لا توجد عروض متاحة حالياً.</div>
+    <div class="empty">لا توجد عقارات متاحة حالياً.</div>
     {% endif %}
   </main>
 </body>

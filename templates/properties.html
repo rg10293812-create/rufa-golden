@@ -1,13 +1,79 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>العقارات</h2>
-<form method="get"><input name="q" value="{{q}}" placeholder="بحث"><button class="btn">بحث</button></form>
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a>
+<h2>إدارة العقارات</h2>
+<p class="small">أضف العقار مرة واحدة فقط من هنا. إذا فعّلت خيار "إظهار للزوار" سيظهر تلقائياً في صفحة الزائر.</p>
+<form method="get"><input name="q" value="{{q}}" placeholder="بحث باسم العقار أو الحي أو السعر"><button class="btn">بحث</button></form>
+
 {% if current_user.role in ['admin','executive','marketer'] %}
-<form id="propertyForm" method="post" onsubmit="clearDraft('propertyForm')">
-<div class="autosave" id="propertyForm_note">الحقول تحفظ كمسودة تلقائياً على الجهاز، وعند الضغط على حفظ يتم حفظ العقار على السحابة.</div>
-<div class="row"><input name="name" placeholder="اسم العقار"><input name="location" placeholder="الموقع"><input name="price" placeholder="السعر"><select name="status"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select>{% if current_user.role in ['admin','executive'] %}<select name="ext_marketer_id"><option value="">اختر المسوق الخارجي - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select>{% endif %}</div>
-<textarea name="specs" placeholder="المواصفات كاملة بالترتيب"></textarea>
-<button class="btn green">حفظ العقار سحابياً</button>
-</form><script>loadDraft('propertyForm')</script>
+<div class="card">
+<h3>إضافة عقار جديد</h3>
+<form id="propertyForm" method="post" enctype="multipart/form-data" onsubmit="clearDraft('propertyForm')">
+<div class="autosave" id="propertyForm_note">الحقول تحفظ كمسودة تلقائياً على الجهاز، والصور تحفظ عند الضغط على حفظ.</div>
+<div class="row">
+  <input name="name" placeholder="اسم العقار / المشروع" required>
+  <input name="location" placeholder="الحي / الموقع">
+  <input name="price" placeholder="السعر">
+  <select name="status"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select>
+  <select name="property_type"><option value="other">نوع العقار</option><option value="villa">فيلا</option><option value="floor">دور</option><option value="apartment">شقة</option><option value="townhouse">تاون هاوس</option><option value="land">أرض</option></select>
+  {% if current_user.role in ['admin','executive'] %}<select name="ext_marketer_id"><option value="">اختر المسوق الخارجي - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select>{% endif %}
+</div>
+<div class="row">
+  <label class="card"><input type="checkbox" name="show_to_visitors" checked style="width:auto"> إظهار للزوار</label>
+  <label class="card"><input type="checkbox" name="is_exclusive" style="width:auto"> عرض حصري ⭐</label>
+  <input id="propertyImagesInput" type="file" name="images" accept="image/*" multiple>
+</div>
+<p class="small">تقدر تختار الصور على دفعات؛ إذا ضغطت اختيار ملفات مرة ثانية لن تختفي الصور السابقة. أول صورة تصبح صورة الغلاف.</p>
+<div id="selectedImagesBox" class="small" style="margin:8px 0;line-height:2">لم يتم اختيار صور بعد.</div>
+<button type="button" class="btn" id="clearSelectedImages" style="display:none">مسح الصور المختارة</button>
+<textarea name="specs" placeholder="المواصفات كاملة: المساحة، الغرف، الأدوار، الضمانات، المميزات، القرب من الخدمات..."></textarea>
+<button class="btn green">حفظ العقار</button>
+</form>
+<script>
+(function(){
+  const input=document.getElementById('propertyImagesInput');
+  const box=document.getElementById('selectedImagesBox');
+  const clearBtn=document.getElementById('clearSelectedImages');
+  if(!input||!box) return;
+  let savedFiles=[];
+  function fileKey(file){return [file.name,file.size,file.lastModified].join('|');}
+  function syncInput(){const dt=new DataTransfer(); savedFiles.forEach(file=>dt.items.add(file)); input.files=dt.files;}
+  function renderList(){
+    if(savedFiles.length===0){box.textContent='لم يتم اختيار صور بعد.'; clearBtn.style.display='none'; return;}
+    clearBtn.style.display='inline-block';
+    box.innerHTML='<b>الصور المختارة ('+savedFiles.length+'):</b><br>'+savedFiles.map((file,index)=>(index+1)+'- '+file.name).join('<br>');
+  }
+  input.addEventListener('change',function(){
+    const existing=new Set(savedFiles.map(fileKey));
+    Array.from(input.files||[]).forEach(file=>{const key=fileKey(file); if(!existing.has(key)){savedFiles.push(file); existing.add(key);}});
+    syncInput(); renderList();
+  });
+  clearBtn.addEventListener('click',function(){savedFiles=[]; input.value=''; syncInput(); renderList();});
+})();
+</script>
+<script>loadDraft('propertyForm')</script>
+</div>
 {% endif %}
-<table><tr><th>العقار</th><th>الموقع</th><th>السعر</th><th>الحالة</th><th>الخيارات</th></tr>{% for r in rows %}<tr><td>{{r.name}}</td><td>{{r.location}}</td><td>{{r.price}}</td><td><span class="status {{r.status}}">{{status_labels.get(r.status,r.status)}}</span></td><td><a class="btn" href="{{url_for('property_detail',pid=r.id)}}">رؤية التفاصيل</a><form method="post" action="{{url_for('property_status',pid=r.id)}}" style="display:inline"><select name="status" style="width:auto"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select><button class="btn gold">تحديث</button></form>{% if can_delete_content(current_user) %}<form method="post" action="{{url_for('delete_property',pid=r.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form>{% endif %}</td></tr>{% endfor %}</table>
+
+<h3>العقارات الحالية</h3>
+<table>
+<tr><th>الصورة</th><th>العقار</th><th>الموقع</th><th>السعر</th><th>الحالة</th><th>ظهور الزائر</th><th>الخيارات</th></tr>
+{% for r in rows %}
+<tr>
+<td>{% if r.image_data %}<img class="img" src="{{r.image_data}}">{% else %}🏡{% endif %}</td>
+<td>{{r.name}} {% if r.is_exclusive %}<span class="badge">حصري ⭐</span>{% endif %}</td>
+<td>{{r.location}}</td><td>{{r.price}}</td><td><span class="status {{r.status}}">{{status_labels.get(r.status,r.status)}}</span></td>
+<td>{% if r.show_to_visitors %}<span class="badge good">ظاهر</span>{% else %}<span class="badge">مخفي</span>{% endif %}</td>
+<td>
+<a class="btn" href="{{url_for('property_detail',pid=r.id)}}">التفاصيل</a>
+<a class="btn gold" href="{{ url_for('visitor_offer_detail', oid=r.id) }}" target="_blank">معاينة الزائر</a>
+<form method="post" action="{{url_for('property_status',pid=r.id)}}" style="display:inline"><select name="status" style="width:auto"><option value="available" {% if r.status=='available' %}selected{% endif %}>متاح</option><option value="reserved" {% if r.status=='reserved' %}selected{% endif %}>محجوز</option><option value="sold" {% if r.status=='sold' %}selected{% endif %}>مباع</option></select><button class="btn gold">تحديث</button></form>
+<form method="post" action="{{url_for('property_visibility',pid=r.id)}}" style="display:inline-block">
+<select name="property_type" style="width:auto"><option value="other" {% if r.property_type=='other' %}selected{% endif %}>نوع العقار</option><option value="villa" {% if r.property_type=='villa' %}selected{% endif %}>فيلا</option><option value="floor" {% if r.property_type=='floor' %}selected{% endif %}>دور</option><option value="apartment" {% if r.property_type=='apartment' %}selected{% endif %}>شقة</option><option value="townhouse" {% if r.property_type=='townhouse' %}selected{% endif %}>تاون هاوس</option><option value="land" {% if r.property_type=='land' %}selected{% endif %}>أرض</option></select>
+<label><input type="checkbox" name="show_to_visitors" {% if r.show_to_visitors %}checked{% endif %} style="width:auto"> زائر</label>
+<label><input type="checkbox" name="is_exclusive" {% if r.is_exclusive %}checked{% endif %} style="width:auto"> حصري</label>
+<button class="btn">حفظ الظهور</button>
+</form>
+{% if can_delete_content(current_user) %}<form method="post" action="{{url_for('delete_property',pid=r.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form>{% endif %}
+</td></tr>{% endfor %}
+</table>
 {% endblock %}
