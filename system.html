@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>إدارة المسوقين</h2>
-<p class="small">حساب مالي واضح لكل مسوق: إجمالي الصفقات، العمولة، المصروف، والرصيد المستحق.</p>
-<table><tr><th>المسوق</th><th>الجوال</th><th>النسبة</th><th>العروض</th><th>المبيعات</th><th>العمولة</th><th>المصروف</th><th>الرصيد</th><th>تفاصيل</th></tr>
-{% for u,st in rows %}<tr><td>{{u.full_name or u.username}}</td><td>{{u.phone}}</td><td>{{u.commission_rate}}%</td><td>{{st.offers_count}}</td><td>{{st.total_sales|sar}}</td><td>{{st.total_commission|sar}}</td><td>{{st.total_paid|sar}}</td><td><b>{{st.balance|sar}}</b></td><td><a class="btn" href="{{url_for('marketer_detail',uid=u.id)}}">دخول</a></td></tr>{% endfor %}</table>
-<div class="card"><b>إضافة مسوق جديد:</b> من صفحة <a href="{{url_for('users')}}">إدارة المستخدمين</a> اختر الدور: مسوق، ثم ضع نسبة العمولة.</div>
+<a class="btn gray" href="{{url_for('marketers')}}">رجوع</a><h2>حساب المسوق: {{u.full_name or u.username}}</h2>
+<div class="dash"><div class="stat">العروض<b>{{st.offers_count}}</b></div><div class="stat">المبيعات<b>{{st.total_sales|sar}}</b></div><div class="stat">العمولة<b>{{st.total_commission|sar}}</b></div><div class="stat">المصروف<b>{{st.total_paid|sar}}</b></div><div class="stat">الرصيد<b>{{st.balance|sar}}</b></div></div>
+<div class="card"><p><b>الجوال:</b> {{u.phone}} | <b>البريد:</b> {{u.email}} | <b>نسبة العمولة:</b> {{u.commission_rate}}%</p></div>
+<h3>الصفقات</h3><table><tr><th>التاريخ</th><th>قيمة الصفقة</th><th>النسبة</th><th>العمولة</th><th>ملاحظات</th></tr>{% for s in sales %}<tr><td>{{s.created_at.strftime('%Y-%m-%d')}}</td><td>{{s.deal_value|sar}}</td><td>{{s.commission_rate}}%</td><td>{{s.commission_amount|sar}}</td><td>{{s.notes}}</td></tr>{% endfor %}</table>
+<h3>المبالغ المصروفة</h3><table><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظات</th></tr>{% for p in payouts %}<tr><td>{{p.created_at.strftime('%Y-%m-%d')}}</td><td>{{p.amount|sar}}</td><td>{{p.notes}}</td></tr>{% endfor %}</table>
 {% endblock %}

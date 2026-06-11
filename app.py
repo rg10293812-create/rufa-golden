@@ -407,6 +407,27 @@ def marketer_detail(uid):
     u=User.query.get_or_404(uid); st=marketer_stats(uid)
     return render_template('marketer_detail.html', u=u, st=st, sales=Sale.query.filter_by(marketer_id=uid).order_by(Sale.id.desc()).all(), payouts=Payout.query.filter_by(marketer_id=uid).order_by(Payout.id.desc()).all())
 
+
+@app.route('/external-deals', methods=['GET','POST'])
+@login_required
+def external_deals():
+    user=get_current_user()
+    if user.role not in ['admin','executive','marketer']:
+        flash('ليس لديك صلاحية الصفقات الخارجية')
+        return redirect(url_for('index'))
+    if request.method=='POST':
+        # حفظ أولي كسجل نظام حتى لا تضيع البيانات، والتطوير التفصيلي للنسب يتم لاحقاً عند الحاجة.
+        deal_name=request.form.get('deal_name','').strip()
+        company=request.form.get('company','').strip()
+        deal_value=request.form.get('deal_value','').strip()
+        notes=request.form.get('notes','').strip()
+        msg=f"صفقة خارجية: {deal_name} | الشركة: {company} | القيمة: {deal_value} | {notes}"
+        db.session.add(SystemLog(level='info', message=msg, user_name=user.username, status='صفقة خارجية'))
+        db.session.commit()
+        flash('تم حفظ الصفقة الخارجية بنجاح')
+        return redirect(url_for('external_deals'))
+    return render_template('external_deals.html')
+
 @app.route('/finance', methods=['GET','POST'])
 @login_required
 def finance():
