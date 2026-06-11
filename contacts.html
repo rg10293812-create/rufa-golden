@@ -1,117 +1,16 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a>
-<h2>إدارة العقارات</h2>
-<p class="small">أضف العقار مرة واحدة فقط من هنا. إذا فعّلت خيار "إظهار للزوار" سيظهر تلقائياً في صفحة الزائر.</p>
-<form method="get"><input name="q" value="{{q}}" placeholder="بحث باسم العقار أو الحي أو السعر"><button class="btn">بحث</button></form>
-
-{% if current_user.role in ['admin','executive','marketer'] %}
-<div class="card">
-<h3>إضافة عقار جديد</h3>
-<form id="propertyForm" method="post" enctype="multipart/form-data" onsubmit="clearDraft('propertyForm')">
-<div class="autosave" id="propertyForm_note">الحفظ التلقائي يعمل على السيرفر كل ثانيتين؛ لو طفى النظام ترجع البيانات تلقائياً عند فتح الصفحة. الصور تحفظ عند الضغط على حفظ.</div>{% if draft %}<div class="flash">تم استرجاع آخر مسودة محفوظة بتاريخ {{draft.updated_at.strftime('%Y-%m-%d %H:%M') if draft.updated_at else ''}}</div>{% endif %}
-<div class="row">
-  <input name="name" placeholder="اسم العقار / المشروع" required value="{{draft_data.get('name','')}}">
-  <input name="location" placeholder="الحي / الموقع" value="{{draft_data.get('location','')}}">
-  <input name="price" placeholder="السعر" value="{{draft_data.get('price','')}}">
-  <select name="status"><option value="available" {% if draft_data.get('status','available')=='available' %}selected{% endif %}>متاح</option><option value="reserved" {% if draft_data.get('status')=='reserved' %}selected{% endif %}>محجوز</option><option value="sold" {% if draft_data.get('status')=='sold' %}selected{% endif %}>مباع</option></select>
-  <select name="property_type">{% set dt=draft_data.get('property_type','other') %}<option value="other" {% if dt=='other' %}selected{% endif %}>نوع العقار</option><option value="villa" {% if dt=='villa' %}selected{% endif %}>فيلا</option><option value="floor" {% if dt=='floor' %}selected{% endif %}>دور</option><option value="apartment" {% if dt=='apartment' %}selected{% endif %}>شقة</option><option value="townhouse" {% if dt=='townhouse' %}selected{% endif %}>تاون هاوس</option><option value="land" {% if dt=='land' %}selected{% endif %}>أرض</option></select>
-  {% if current_user.role in ['admin','executive'] %}<select name="ext_marketer_id"><option value="">اختر المسوق الخارجي - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select>{% endif %}
+<h2>لوحة تحكم روفا جولدن</h2>
+<p class="small">لوحة احترافية مختصرة تعرض حالة النظام، العروض، المسوقين، والمبيعات.</p>
+<div class="dash">
+  <div class="stat">العقارات<b>{{stats.properties}}</b></div>
+  <div class="stat">العروض النشطة<b>{{stats.offers}}</b></div>
+  <div class="stat">العملاء<b>{{stats.customers}}</b></div>
+  <div class="stat">المسوقين<b>{{stats.marketers}}</b></div>
+  <div class="stat">إجمالي المبيعات<b>{{stats.sales|sar}}</b></div>
 </div>
-<div class="row">
-  <label class="card"><input type="checkbox" name="show_to_visitors" {% if draft_data.get('show_to_visitors','on') in ['on', True, 'true', '1'] %}checked{% endif %} style="width:auto"> إظهار للزوار</label>
-  <label class="card"><input type="checkbox" name="is_exclusive" {% if draft_data.get('is_exclusive') in ['on', True, 'true', '1'] %}checked{% endif %} style="width:auto"> عرض حصري ⭐</label>
-  <input id="propertyImagesInput" type="file" name="images" accept="image/*" multiple>
-</div>
-<p class="small">تقدر تختار الصور على دفعات؛ إذا ضغطت اختيار ملفات مرة ثانية لن تختفي الصور السابقة. أول صورة تصبح صورة الغلاف.</p>
-<div id="selectedImagesBox" class="small" style="margin:8px 0;line-height:2">لم يتم اختيار صور بعد.</div>
-<button type="button" class="btn" id="clearSelectedImages" style="display:none">مسح الصور المختارة</button>
-<textarea name="specs" placeholder="المواصفات كاملة: المساحة، الغرف، الأدوار، الضمانات، المميزات، القرب من الخدمات...">{{draft_data.get('specs','')}}</textarea>
-<button class="btn green">حفظ العقار</button>
-</form>
-<form method="post" action="{{url_for('properties_draft_clear')}}"><button class="btn red" type="submit">مسح المسودة</button></form>
-<script>
-(function(){
-  const input=document.getElementById('propertyImagesInput');
-  const box=document.getElementById('selectedImagesBox');
-  const clearBtn=document.getElementById('clearSelectedImages');
-  if(!input||!box) return;
-  let savedFiles=[];
-  function fileKey(file){return [file.name,file.size,file.lastModified].join('|');}
-  function syncInput(){const dt=new DataTransfer(); savedFiles.forEach(file=>dt.items.add(file)); input.files=dt.files;}
-  function renderList(){
-    if(savedFiles.length===0){box.textContent='لم يتم اختيار صور بعد.'; clearBtn.style.display='none'; return;}
-    clearBtn.style.display='inline-block';
-    box.innerHTML='<b>الصور المختارة ('+savedFiles.length+'):</b><br>'+savedFiles.map((file,index)=>(index+1)+'- '+file.name).join('<br>');
-  }
-  input.addEventListener('change',function(){
-    const existing=new Set(savedFiles.map(fileKey));
-    Array.from(input.files||[]).forEach(file=>{const key=fileKey(file); if(!existing.has(key)){savedFiles.push(file); existing.add(key);}});
-    syncInput(); renderList();
-  });
-  clearBtn.addEventListener('click',function(){savedFiles=[]; input.value=''; syncInput(); renderList();});
-})();
-</script>
-<script>
-(function(){
-  const form=document.getElementById('propertyForm');
-  const note=document.getElementById('propertyForm_note');
-  if(!form) return;
-  let timer=null;
-  function payload(){
-    const data={};
-    [...form.elements].forEach(el=>{
-      if(!el.name || el.type==='file') return;
-      data[el.name]=(el.type==='checkbox') ? (el.checked ? 'on' : '') : el.value;
-    });
-    return data;
-  }
-  async function saveNow(){
-    try{
-      const res=await fetch('{{url_for('properties_autosave')}}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});
-      const out=await res.json();
-      if(out.ok && note) note.textContent='تم الحفظ التلقائي على السيرفر الساعة '+out.saved_at;
-    }catch(e){ if(note) note.textContent='تعذر الحفظ التلقائي مؤقتاً؛ تأكد من الاتصال'; }
-  }
-  function schedule(){ clearTimeout(timer); timer=setTimeout(saveNow, 1200); }
-  form.addEventListener('input', schedule); form.addEventListener('change', schedule);
-  setInterval(saveNow, 10000);
-})();
-</script>
-</div>
-
-<div class="card">
-<h3>استيراد إعلانات كثيرة دفعة واحدة</h3>
-<p class="small">انسخ من تطبيق عقار أو من ملف Excel واحفظه CSV. الترتيب: اسم العقار، الحي، السعر، النوع، حصري، المواصفات. كل إعلان في سطر.</p>
-<form method="post" action="{{url_for('properties_bulk_import')}}" enctype="multipart/form-data">
-<textarea name="bulk_text" placeholder="مثال:
-فيلا قرطبة,قرطبة,1700000,villa,حصري,4 ماستر + مجلس + صالة
-شقة اليرموك,اليرموك,850000,apartment,,3 غرف + صالة"></textarea>
-<input type="file" name="bulk_file" accept=".csv,.txt">
-<button class="btn green">استيراد الإعلانات</button>
-</form>
-</div>
-{% endif %}
-
-<h3>العقارات الحالية</h3>
-<table>
-<tr><th>الصورة</th><th>العقار</th><th>الموقع</th><th>السعر</th><th>الحالة</th><th>ظهور الزائر</th><th>الخيارات</th></tr>
-{% for r in rows %}
-<tr>
-<td>{% if r.image_data %}<img class="img" src="{{r.image_data}}">{% else %}🏡{% endif %}</td>
-<td>{{r.name}} {% if r.is_exclusive %}<span class="badge">حصري ⭐</span>{% endif %}</td>
-<td>{{r.location}}</td><td>{{r.price}}</td><td><span class="status {{r.status}}">{{status_labels.get(r.status,r.status)}}</span></td>
-<td>{% if r.show_to_visitors %}<span class="badge good">ظاهر</span>{% else %}<span class="badge">مخفي</span>{% endif %}</td>
-<td>
-<a class="btn" href="{{url_for('property_detail',pid=r.id)}}">التفاصيل</a>
-<a class="btn gold" href="{{ url_for('visitor_offer_detail', oid=r.id) }}" target="_blank">معاينة الزائر</a>
-<form method="post" action="{{url_for('property_status',pid=r.id)}}" style="display:inline"><select name="status" style="width:auto"><option value="available" {% if r.status=='available' %}selected{% endif %}>متاح</option><option value="reserved" {% if r.status=='reserved' %}selected{% endif %}>محجوز</option><option value="sold" {% if r.status=='sold' %}selected{% endif %}>مباع</option></select><button class="btn gold">تحديث</button></form>
-<form method="post" action="{{url_for('property_visibility',pid=r.id)}}" style="display:inline-block">
-<select name="property_type" style="width:auto"><option value="other" {% if r.property_type=='other' %}selected{% endif %}>نوع العقار</option><option value="villa" {% if r.property_type=='villa' %}selected{% endif %}>فيلا</option><option value="floor" {% if r.property_type=='floor' %}selected{% endif %}>دور</option><option value="apartment" {% if r.property_type=='apartment' %}selected{% endif %}>شقة</option><option value="townhouse" {% if r.property_type=='townhouse' %}selected{% endif %}>تاون هاوس</option><option value="land" {% if r.property_type=='land' %}selected{% endif %}>أرض</option></select>
-<label><input type="checkbox" name="show_to_visitors" {% if r.show_to_visitors %}checked{% endif %} style="width:auto"> زائر</label>
-<label><input type="checkbox" name="is_exclusive" {% if r.is_exclusive %}checked{% endif %} style="width:auto"> حصري</label>
-<button class="btn">حفظ الظهور</button>
-</form>
-{% if can_delete_content(current_user) %}<form method="post" action="{{url_for('delete_property',pid=r.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form>{% endif %}
-</td></tr>{% endfor %}
-</table>
+<div class="card"><h3>صلاحيتك الحالية: {{role_labels.get(current_user.role,current_user.role)}}</h3>
+{% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات.</p>{% elif current_user.role == 'marketer' %}<p>تستطيع إضافة ومتابعة عروضك وعقاراتك وحسابك المالي.</p>{% else %}<p>حسب الصلاحية المسندة لحسابك.</p>{% endif %}</div>
+<h3>أداء المسوقين</h3>
+<table><tr><th>المسوق</th><th>العروض</th><th>المبيعات</th><th>العمولة</th><th>الرصيد</th></tr>{% for u,st in top %}<tr><td><a href="{{url_for('marketer_detail',uid=u.id)}}">{{u.full_name or u.username}}</a></td><td>{{st.offers_count}}</td><td>{{st.total_sales|sar}}</td><td>{{st.total_commission|sar}}</td><td>{{st.balance|sar}}</td></tr>{% endfor %}</table>
+<div class="nav"><a class="btn green" href="{{url_for('properties')}}">العقارات</a><a class="btn brown" href="{{url_for('offers')}}">العروض</a><a class="btn black" href="{{url_for('marketers')}}">إدارة المسوقين</a><a class="btn gold" href="{{url_for('finance')}}">الإدارة المالية</a><a class="btn" href="{{url_for('visitor_offers')}}" target="_blank">معاينة الزائر</a></div>
 {% endblock %}

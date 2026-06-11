@@ -1,4 +1,4 @@
-import os, urllib.parse, base64, json, zipfile, shutil, csv, io
+import os, urllib.parse, urllib.request, base64, json, zipfile, shutil, re
 from datetime import datetime
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, abort
@@ -20,7 +20,7 @@ BACKUP_AUTO_HOUR = int(os.getenv('BACKUP_AUTO_HOUR', '3'))
 
 db = SQLAlchemy(app)
 
-ROLE_LABELS = {'admin':'مدير عام','executive':'مدير تنفيذي','marketer':'موظف','viewer':'مشاهد'}
+ROLE_LABELS = {'admin':'مدير عام','executive':'مدير تنفيذي','marketer':'مسوق','viewer':'مشاهد'}
 STATUS_LABELS = {'available':'متاح','reserved':'محجوز','sold':'مباع'}
 
 class User(db.Model):
@@ -40,20 +40,6 @@ class User(db.Model):
     def set_password(self,password): self.password_hash=generate_password_hash(password)
     def check_password(self,password): return check_password_hash(self.password_hash,password)
 
-
-class ExternalMarketer(db.Model):
-    __tablename__='external_marketers'
-    id=db.Column(db.Integer, primary_key=True)
-    name=db.Column(db.Text, nullable=False, default='')
-    phone=db.Column(db.Text, default='')
-    email=db.Column(db.Text, default='')
-    company=db.Column(db.Text, default='')
-    source=db.Column(db.Text, default='خارجي')
-    commission_rate=db.Column(db.Float, default=2.5)
-    status=db.Column(db.String(20), default='active', index=True)
-    notes=db.Column(db.Text, default='')
-    created_at=db.Column(db.DateTime, default=datetime.utcnow)
-
 class Property(db.Model):
     __tablename__='properties'
     id=db.Column(db.Integer, primary_key=True)
@@ -61,34 +47,9 @@ class Property(db.Model):
     location=db.Column(db.Text, default='')
     price=db.Column(db.Text, default='')
     specs=db.Column(db.Text, default='')
-    image_data=db.Column(db.Text, default='')
-    images_data=db.Column(db.Text, default='[]')
-    property_type=db.Column(db.String(50), default='other', index=True)
-    is_exclusive=db.Column(db.Boolean, default=False, index=True)
-    show_to_visitors=db.Column(db.Boolean, default=True, index=True)
     status=db.Column(db.String(20), default='available', index=True)
     marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
-    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
-    def images_list(self):
-        items=[]
-        if self.image_data: items.append(self.image_data)
-        try:
-            more=json.loads(self.images_data or '[]')
-            if isinstance(more,list): items.extend([x for x in more if x])
-        except Exception: pass
-        seen=set(); result=[]
-        for item in items:
-            if item not in seen: seen.add(item); result.append(item)
-        return result
-
-
-class PropertyDraft(db.Model):
-    __tablename__='property_drafts'
-    id=db.Column(db.Integer, primary_key=True)
-    user_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
-    payload=db.Column(db.Text, default='{}')
-    updated_at=db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Contact(db.Model):
     __tablename__='contacts'
@@ -109,7 +70,6 @@ class Offer(db.Model):
     images_data=db.Column(db.Text, default='[]')
     status=db.Column(db.String(20), default='available', index=True)
     marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
-    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
     def images_list(self):
         items=[]
@@ -134,8 +94,7 @@ class CustomerMessage(db.Model):
 class Sale(db.Model):
     __tablename__='sales'
     id=db.Column(db.Integer, primary_key=True)
-    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
-    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
+    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     offer_id=db.Column(db.Integer, db.ForeignKey('offers.id'), nullable=True, index=True)
     property_id=db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True, index=True)
     deal_value=db.Column(db.Float, default=0)
@@ -147,40 +106,7 @@ class Sale(db.Model):
 class Payout(db.Model):
     __tablename__='payouts'
     id=db.Column(db.Integer, primary_key=True)
-    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
-    ext_marketer_id=db.Column(db.Integer, db.ForeignKey('external_marketers.id'), nullable=True, index=True)
-    amount=db.Column(db.Float, default=0)
-    notes=db.Column(db.Text, default='')
-    created_at=db.Column(db.DateTime, default=datetime.utcnow)
-
-
-class ExternalDeal(db.Model):
-    __tablename__='external_deals'
-    id=db.Column(db.Integer, primary_key=True)
-    title=db.Column(db.Text, nullable=False, default='')
-    client_name=db.Column(db.Text, default='')
-    client_phone=db.Column(db.Text, default='')
-    property_name=db.Column(db.Text, default='')
-    deal_value=db.Column(db.Float, default=0)
-    company_rate=db.Column(db.Float, default=2.5)
-    company_commission=db.Column(db.Float, default=0)
-    ext_marketer_name=db.Column(db.Text, default='')
-    ext_marketer_phone=db.Column(db.Text, default='')
-    ext_marketer_rate=db.Column(db.Float, default=0)
-    ext_marketer_amount=db.Column(db.Float, default=0)
-    company_net=db.Column(db.Float, default=0)
-    paid_amount=db.Column(db.Float, default=0)
-    status=db.Column(db.String(20), default='open', index=True)
-    notes=db.Column(db.Text, default='')
-    created_at=db.Column(db.DateTime, default=datetime.utcnow)
-
-class DealShare(db.Model):
-    __tablename__='deal_shares'
-    id=db.Column(db.Integer, primary_key=True)
-    deal_id=db.Column(db.Integer, db.ForeignKey('external_deals.id'), nullable=False, index=True)
-    user_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
-    member_name=db.Column(db.Text, default='')
-    rate=db.Column(db.Float, default=0)
+    marketer_id=db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     amount=db.Column(db.Float, default=0)
     notes=db.Column(db.Text, default='')
     created_at=db.Column(db.DateTime, default=datetime.utcnow)
@@ -221,16 +147,10 @@ def init_db():
         admin.can_delete=True; admin.can_manage_users=True; admin.is_active=True
     db.session.commit()
 
-
 @app.context_processor
 def inject_user():
     user=get_current_user()
-    return dict(current_user=user, role_labels=ROLE_LABELS, status_labels=STATUS_LABELS, can_delete_content=can_delete_content, can_manage_accounts=can_manage_accounts, external_marketer_name=external_marketer_name)
-
-def external_marketer_name(mid):
-    if not mid: return '-'
-    m=ExternalMarketer.query.get(mid)
-    return m.name if m else '-'
+    return dict(current_user=user, role_labels=ROLE_LABELS, status_labels=STATUS_LABELS, can_delete_content=can_delete_content, can_manage_accounts=can_manage_accounts)
 
 def get_current_user():
     uid=session.get('user_id')
@@ -254,6 +174,69 @@ def manage_users_required(fn):
         return fn(*args,**kwargs)
     return wrapper
 
+
+def _clean_text(value):
+    value=re.sub(r'<[^>]+>', ' ', value or '')
+    value=value.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+    return re.sub(r'\s+', ' ', value).strip()
+
+def _meta_content(html, names):
+    for name in names:
+        patterns=[
+            rf'<meta[^>]+property=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+name=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(name)}["\']'
+        ]
+        for pat in patterns:
+            m=re.search(pat, html, re.I|re.S)
+            if m: return _clean_text(m.group(1))
+    return ''
+
+def parse_property_link(url):
+    """يجلب بيانات أولية من رابط إعلان عقاري ويجهزها لحقول النظام."""
+    url=(url or '').strip()
+    parsed=urllib.parse.urlparse(url)
+    if parsed.scheme not in ['http','https'] or not parsed.netloc:
+        raise ValueError('الرابط غير صحيح. انسخ رابط الإعلان كامل ويبدأ بـ http أو https')
+    req=urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 RufaGoldenBot/1.0'})
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        raw=resp.read(900000)
+        charset=resp.headers.get_content_charset() or 'utf-8'
+    html=raw.decode(charset, errors='ignore')
+    title=_meta_content(html, ['og:title','twitter:title'])
+    if not title:
+        m=re.search(r'<title[^>]*>(.*?)</title>', html, re.I|re.S)
+        title=_clean_text(m.group(1)) if m else ''
+    desc=_meta_content(html, ['og:description','twitter:description','description'])
+    full=' '.join([title, desc])
+    price=''
+    price_patterns=[
+        r'([0-9][0-9,\.\s]{4,})\s*(?:ريال|ر\.س|SAR)',
+        r'(?:ريال|ر\.س|SAR)\s*([0-9][0-9,\.\s]{4,})',
+        r'"price"\s*:\s*"?([0-9][0-9,\.\s]{4,})"?'
+    ]
+    for pat in price_patterns:
+        m=re.search(pat, html+' '+full, re.I)
+        if m:
+            price=re.sub(r'[^0-9]', '', m.group(1))
+            if price: price=f'{int(price):,} ريال'
+            break
+    location=''
+    loc_patterns=[
+        r'"addressLocality"\s*:\s*"([^"]+)"',
+        r'"streetAddress"\s*:\s*"([^"]+)"',
+        r'(?:في|حي)\s+([^\|\-،,]{3,45})'
+    ]
+    for pat in loc_patterns:
+        m=re.search(pat, html+' '+full, re.I)
+        if m:
+            location=_clean_text(m.group(1)); break
+    specs=desc or title
+    if url not in specs:
+        specs=(specs + '\n\nرابط الإعلان: ' + url).strip()
+    name=title[:180] if title else 'عقار من رابط إعلان'
+    return {'name':name, 'location':location, 'price':price, 'specs':specs, 'source_url':url}
+
 def money(v):
     try: return round(float(v or 0),2)
     except Exception: return 0
@@ -265,15 +248,6 @@ def marketer_stats(user_id):
             'offers_count':Offer.query.filter_by(marketer_id=user_id).count(),'properties_count':Property.query.filter_by(marketer_id=user_id).count(),
             'sold_offers':Offer.query.filter_by(marketer_id=user_id,status='sold').count()+Property.query.filter_by(marketer_id=user_id,status='sold').count()}
 
-def external_marketer_stats(mid):
-    sales=Sale.query.filter_by(ext_marketer_id=mid).all(); payouts=Payout.query.filter_by(ext_marketer_id=mid).all()
-    total_sales=sum(money(s.deal_value) for s in sales); total_comm=sum(money(s.commission_amount) for s in sales); total_paid=sum(money(p.amount) for p in payouts)
-    return {
-        'sales_count':len(sales), 'total_sales':total_sales, 'total_commission':total_comm, 'total_paid':total_paid, 'balance':total_comm-total_paid,
-        'offers_count':Offer.query.filter_by(ext_marketer_id=mid).count(), 'properties_count':Property.query.filter_by(ext_marketer_id=mid).count(),
-        'sold_count':Offer.query.filter_by(ext_marketer_id=mid,status='sold').count()+Property.query.filter_by(ext_marketer_id=mid,status='sold').count(),
-        'active_offers':Offer.query.filter_by(ext_marketer_id=mid,status='available').count()+Property.query.filter_by(ext_marketer_id=mid,status='available').count()
-    }
 
 def safe_backup_name(name):
     name=os.path.basename(name or '')
@@ -303,7 +277,7 @@ def cleanup_old_backups():
 
 def export_data_json():
     data={}
-    models=[User,ExternalMarketer,Property,PropertyDraft,Contact,Offer,CustomerMessage,Sale,Payout,ExternalDeal,DealShare,SystemLog]
+    models=[User,Property,Contact,Offer,CustomerMessage,Sale,Payout,SystemLog]
     for model in models:
         table=[]
         for row in model.query.all():
@@ -356,9 +330,7 @@ def start_backup_scheduler():
     except Exception as exc:
         print('Backup scheduler disabled:', exc)
 
-# تهيئة قاعدة البيانات ثم تشغيل النسخ الاحتياطي التلقائي بعد تعريف الدالة
-with app.app_context():
-    init_db()
+with app.app_context(): init_db()
 start_backup_scheduler()
 
 @app.template_filter('sar')
@@ -382,10 +354,9 @@ def member_entry(): return redirect(url_for('login'))
 @app.route('/dashboard')
 @login_required
 def index():
-    dst=deal_stats()
-    stats={'properties':Property.query.count(),'offers':Offer.query.filter(Offer.status!='sold').count(),'deals':dst['count'],'deal_value':dst['total_value'],'company_net':dst['net']}
-    recent=ExternalDeal.query.order_by(ExternalDeal.id.desc()).limit(10).all()
-    return render_template('index.html', stats=stats, recent=recent, dst=dst)
+    stats={'properties':Property.query.count(),'offers':Offer.query.filter(Offer.status!='sold').count(),'customers':Contact.query.filter_by(category='customers').count(),'marketers':User.query.filter_by(role='marketer').count(),'sales':sum(money(s.deal_value) for s in Sale.query.all())}
+    top=[(u,marketer_stats(u.id)) for u in User.query.filter_by(role='marketer').all()]
+    return render_template('index.html', stats=stats, top=top)
 
 @app.route('/users', methods=['GET','POST'])
 @login_required
@@ -425,228 +396,75 @@ def update_user_permissions(uid):
     if user.role=='admin': user.can_delete=True; user.can_manage_users=True; user.is_active=True
     db.session.commit(); flash('تم تحديث بيانات وصلاحيات المستخدم'); return redirect(url_for('users'))
 
-
-def deal_calc_values(deal_value, company_rate, ext_rate, internal_rates):
-    value=money(deal_value)
-    company_rate=money(company_rate)
-    ext_rate=money(ext_rate)
-    company_comm=value*company_rate/100
-    ext_amount=value*ext_rate/100
-    internal_total=sum(value*money(r)/100 for r in internal_rates)
-    company_net=company_comm-ext_amount-internal_total
-    return value, company_rate, company_comm, ext_rate, ext_amount, internal_total, company_net
-
-def deal_stats():
-    deals=ExternalDeal.query.all()
-    total_value=sum(money(d.deal_value) for d in deals)
-    company_comm=sum(money(d.company_commission) for d in deals)
-    ext=sum(money(d.ext_marketer_amount) for d in deals)
-    internal=sum(money(s.amount) for s in DealShare.query.all())
-    paid=sum(money(d.paid_amount) for d in deals)
-    net=sum(money(d.company_net) for d in deals)
-    return {'count':len(deals),'total_value':total_value,'company_commission':company_comm,'external_amount':ext,'internal_amount':internal,'paid':paid,'net':net}
-
-@app.route('/external-deals', methods=['GET','POST'])
-@login_required
-def external_deals():
-    if get_current_user().role not in ['admin','executive']:
-        flash('الصفقات الخارجية مخصصة للإدارة فقط'); return redirect(url_for('index'))
-    users=User.query.filter(User.role.in_(['admin','executive','marketer']), User.is_active==True).order_by(User.full_name).all()
-    if request.method=='POST':
-        value=money(request.form.get('deal_value'))
-        company_rate=money(request.form.get('company_rate',2.5))
-        ext_rate=money(request.form.get('ext_marketer_rate',0))
-        share_user_ids=request.form.getlist('share_user_id')
-        share_rates=request.form.getlist('share_rate')
-        internal_rates=[money(r) for r in share_rates if money(r)>0]
-        value, company_rate, company_comm, ext_rate, ext_amount, internal_total, company_net=deal_calc_values(value,company_rate,ext_rate,internal_rates)
-        deal=ExternalDeal(
-            title=request.form.get('title','').strip() or 'صفقة خارجية',
-            client_name=request.form.get('client_name',''), client_phone=request.form.get('client_phone',''),
-            property_name=request.form.get('property_name',''), deal_value=value,
-            company_rate=company_rate, company_commission=company_comm,
-            ext_marketer_name=request.form.get('ext_marketer_name',''), ext_marketer_phone=request.form.get('ext_marketer_phone',''),
-            ext_marketer_rate=ext_rate, ext_marketer_amount=ext_amount, company_net=company_net,
-            status=request.form.get('status','open'), notes=request.form.get('notes','')
-        )
-        db.session.add(deal); db.session.flush()
-        for uid,rate in zip(share_user_ids, share_rates):
-            rate=money(rate)
-            if rate<=0: continue
-            user=User.query.get(int(uid)) if uid else None
-            db.session.add(DealShare(deal_id=deal.id, user_id=user.id if user else None, member_name=(user.full_name or user.username) if user else '', rate=rate, amount=value*rate/100, notes='نسبة موظف داخلي'))
-        db.session.commit(); flash('تم إنشاء الصفقة الخارجية وتقسيم نسب الشركة والموظفين تلقائياً')
-        return redirect(url_for('external_deal_detail', deal_id=deal.id))
-    deals=ExternalDeal.query.order_by(ExternalDeal.id.desc()).all()
-    return render_template('external_deals.html', deals=deals, users=users, st=deal_stats())
-
-@app.route('/external-deals/<int:deal_id>', methods=['GET','POST'])
-@login_required
-def external_deal_detail(deal_id):
-    if get_current_user().role not in ['admin','executive']:
-        flash('الصفقات الخارجية مخصصة للإدارة فقط'); return redirect(url_for('index'))
-    deal=ExternalDeal.query.get_or_404(deal_id)
-    users=User.query.filter(User.role.in_(['admin','executive','marketer']), User.is_active==True).order_by(User.full_name).all()
-    if request.method=='POST':
-        action=request.form.get('action')
-        if action=='payout':
-            deal.paid_amount=money(deal.paid_amount)+money(request.form.get('amount'))
-            db.session.commit(); flash('تم تسجيل مبلغ مصروف على الصفقة')
-        elif action=='status':
-            deal.status=request.form.get('status',deal.status); db.session.commit(); flash('تم تحديث حالة الصفقة')
-        elif action=='add_share':
-            uid=int(request.form.get('share_user_id') or 0); rate=money(request.form.get('share_rate'))
-            user=User.query.get(uid) if uid else None
-            if user and rate>0:
-                amount=money(deal.deal_value)*rate/100
-                db.session.add(DealShare(deal_id=deal.id,user_id=user.id,member_name=user.full_name or user.username,rate=rate,amount=amount,notes=request.form.get('notes','')))
-                deal.company_net=money(deal.company_net)-amount
-                db.session.commit(); flash('تم إضافة نسبة الموظف الداخلي')
-        return redirect(url_for('external_deal_detail',deal_id=deal.id))
-    shares=DealShare.query.filter_by(deal_id=deal.id).order_by(DealShare.id.desc()).all()
-    return render_template('external_deal_detail.html', deal=deal, shares=shares, users=users)
-
-@app.route('/external-deals/delete/<int:deal_id>', methods=['POST'])
-@login_required
-def external_deal_delete(deal_id):
-    if get_current_user().role!='admin':
-        flash('حذف الصفقات مخصص للمدير العام فقط'); return redirect(url_for('external_deals'))
-    deal=ExternalDeal.query.get_or_404(deal_id)
-    DealShare.query.filter_by(deal_id=deal.id).delete()
-    db.session.delete(deal); db.session.commit(); flash('تم حذف الصفقة الخارجية')
-    return redirect(url_for('external_deals'))
-
-@app.route('/marketers', methods=['GET','POST'])
+@app.route('/marketers')
 @login_required
 def marketers():
-    # تم استبدال إدارة المسوقين الخارجيين بقسم الصفقات الخارجية
-    flash('تم استبدال هذا القسم بقسم الصفقات الخارجية')
-    return redirect(url_for('external_deals'))
-
-@app.route('/marketers/<int:uid>', methods=['GET','POST'])
+    rows=User.query.filter_by(role='marketer').order_by(User.id.desc()).all()
+    return render_template('marketers.html', rows=[(u,marketer_stats(u.id)) for u in rows])
+@app.route('/marketers/<int:uid>')
 @login_required
 def marketer_detail(uid):
-    flash('تم استبدال هذا القسم بقسم الصفقات الخارجية')
-    return redirect(url_for('external_deals'))
-
-@app.route('/marketers/delete/<int:uid>', methods=['POST'])
-@login_required
-def marketer_delete(uid):
-    if get_current_user().role!='admin':
-        flash('هذا القسم القديم مغلق'); return redirect(url_for('external_deals'))
-    m=ExternalMarketer.query.get_or_404(uid)
-    db.session.delete(m); db.session.commit(); flash('تم حذف المسوق الخارجي')
-    return redirect(url_for('external_deals'))
+    u=User.query.get_or_404(uid); st=marketer_stats(uid)
+    return render_template('marketer_detail.html', u=u, st=st, sales=Sale.query.filter_by(marketer_id=uid).order_by(Sale.id.desc()).all(), payouts=Payout.query.filter_by(marketer_id=uid).order_by(Payout.id.desc()).all())
 
 @app.route('/finance', methods=['GET','POST'])
 @login_required
 def finance():
-    # تم إلغاء الإدارة المالية المستقلة ودمجها داخل الصفقات الخارجية
-    flash('تم دمج الإدارة المالية داخل قسم الصفقات الخارجية')
-    return redirect(url_for('external_deals'))
+    if get_current_user().role not in ['admin','executive']:
+        flash('ليس لديك صلاحية الإدارة المالية'); return redirect(url_for('index'))
+    if request.method=='POST':
+        action=request.form.get('action'); marketer_id=int(request.form.get('marketer_id') or 0)
+        if action=='sale':
+            value=money(request.form.get('deal_value')); rate=money(request.form.get('commission_rate') or User.query.get(marketer_id).commission_rate); comm=value*rate/100
+            sale=Sale(marketer_id=marketer_id, offer_id=request.form.get('offer_id') or None, property_id=request.form.get('property_id') or None, deal_value=value, commission_rate=rate, commission_amount=comm, notes=request.form.get('notes',''))
+            db.session.add(sale)
+            if sale.offer_id: Offer.query.get(int(sale.offer_id)).status='sold'
+            if sale.property_id: Property.query.get(int(sale.property_id)).status='sold'
+            flash('تم تسجيل البيع وحساب العمولة وإخفاء العرض المباع من صفحة الزائر')
+        elif action=='payout':
+            db.session.add(Payout(marketer_id=marketer_id, amount=money(request.form.get('amount')), notes=request.form.get('notes',''))); flash('تم تسجيل صرف العمولة وخصمها من الرصيد')
+        db.session.commit(); return redirect(url_for('finance'))
+    marketers=User.query.filter_by(role='marketer').all()
+    return render_template('finance.html', marketers=marketers, offers=Offer.query.filter(Offer.status!='sold').all(), properties=Property.query.filter(Property.status!='sold').all(), sales=Sale.query.order_by(Sale.id.desc()).all(), payouts=Payout.query.order_by(Payout.id.desc()).all())
 
 @app.route('/visitor')
 def visitor_offers():
-    q=request.args.get('q','').strip(); location=request.args.get('location','').strip(); kind=request.args.get('kind','all').strip()
-    query=Property.query.filter(Property.show_to_visitors==True, Property.status!='sold')
+    q=request.args.get('q','').strip(); location=request.args.get('location','').strip(); max_price=request.args.get('max_price','').strip()
+    query=Offer.query.filter(Offer.status!='sold')
     if q:
-        like=f'%{q}%'; query=query.filter(db.or_(Property.name.ilike(like), Property.location.ilike(like), Property.price.ilike(like), Property.specs.ilike(like)))
+        like=f'%{q}%'; query=query.filter(db.or_(Offer.title.ilike(like), Offer.description.ilike(like), Offer.price.ilike(like)))
     if location:
-        query=query.filter(Property.location.ilike(f'%{location}%'))
-    if kind and kind!='all':
-        if kind=='exclusive': query=query.filter(Property.is_exclusive==True)
-        else: query=query.filter(Property.property_type==kind)
-    rows=query.order_by(Property.id.desc()).all()
-    return render_template('visitor_offers.html', offers=rows, q=q, location=location, kind=kind)
+        query=query.filter(Offer.description.ilike(f'%{location}%'))
+    offers_rows=query.order_by(Offer.id.desc()).all()
+    return render_template('visitor_offers.html', offers=offers_rows, q=q, location=location, max_price=max_price)
 @app.route('/visitor/offer/<int:oid>')
 def visitor_offer_detail(oid):
-    offer=Property.query.get_or_404(oid)
-    if offer.status=='sold' or not offer.show_to_visitors: flash('هذا العقار غير متاح للزوار حالياً'); return redirect(url_for('visitor_offers'))
+    offer=Offer.query.get_or_404(oid)
+    if offer.status=='sold': flash('هذا العرض تم بيعه ولم يعد متاحاً'); return redirect(url_for('visitor_offers'))
     return render_template('visitor_offer_detail.html', offer=offer, images=offer.images_list())
 
 @app.route('/properties', methods=['GET','POST'])
 @login_required
 def properties():
     user=get_current_user()
-    draft=PropertyDraft.query.filter_by(user_id=user.id).first()
-    draft_data={}
-    if draft:
-        try: draft_data=json.loads(draft.payload or '{}')
-        except Exception: draft_data={}
+    prefill={}
     if request.method=='POST':
         if user.role not in ['admin','executive','marketer']: flash('ليس لديك صلاحية إضافة عقار'); return redirect(url_for('properties'))
-        uploaded=[]; files=request.files.getlist('images')
-        for file in files:
-            if file and file.filename:
-                raw=file.read()
-                if raw: uploaded.append(f"data:{file.mimetype or 'image/jpeg'};base64,"+base64.b64encode(raw).decode('utf-8'))
-        mid=int(request.form.get('marketer_id') or (user.id if user.role=='marketer' else 0) or 0) or None
-        ext_mid=int(request.form.get('ext_marketer_id') or 0) or None
-        row=Property(
-            name=request.form.get('name',''), location=request.form.get('location',''), price=request.form.get('price',''), specs=request.form.get('specs',''),
-            image_data=uploaded[0] if uploaded else '', images_data=json.dumps(uploaded[1:] if len(uploaded)>1 else [],ensure_ascii=False),
-            property_type=request.form.get('property_type','other'), is_exclusive=bool(request.form.get('is_exclusive')),
-            show_to_visitors=bool(request.form.get('show_to_visitors')), status=request.form.get('status','available'), marketer_id=mid, ext_marketer_id=ext_mid)
-        db.session.add(row)
-        if draft: db.session.delete(draft)
-        db.session.commit(); flash('تم حفظ العقار ومسح المسودة التلقائية'); return redirect(url_for('properties'))
+        if request.form.get('form_type')=='import_link':
+            try:
+                prefill=parse_property_link(request.form.get('property_url',''))
+                flash('تم جلب البيانات من الرابط. راجعها ثم اضغط حفظ العقار سحابياً')
+            except Exception as exc:
+                flash('تعذر جلب بيانات الرابط: ' + str(exc))
+        else:
+            mid=int(request.form.get('marketer_id') or (user.id if user.role=='marketer' else 0) or 0) or None
+            row=Property(name=request.form.get('name',''), location=request.form.get('location',''), price=request.form.get('price',''), specs=request.form.get('specs',''), status=request.form.get('status','available'), marketer_id=mid)
+            db.session.add(row); db.session.commit(); flash('تم حفظ العقار تلقائياً'); return redirect(url_for('properties'))
     q=request.args.get('q','').strip(); query=Property.query
     if user.role=='marketer': query=query.filter_by(marketer_id=user.id)
     if q:
         like=f'%{q}%'; query=query.filter(db.or_(Property.name.ilike(like),Property.location.ilike(like),Property.price.ilike(like),Property.specs.ilike(like)))
-    return render_template('properties.html', rows=query.order_by(Property.id.desc()).all(), q=q, marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all(), draft_data=draft_data, draft=draft)
-
-@app.route('/properties/autosave', methods=['POST'])
-@login_required
-def properties_autosave():
-    user=get_current_user()
-    if user.role not in ['admin','executive','marketer']:
-        return {'ok':False,'message':'لا توجد صلاحية'}, 403
-    payload=request.get_json(silent=True) or {}
-    allowed={'name','location','price','status','property_type','ext_marketer_id','show_to_visitors','is_exclusive','specs'}
-    clean={k:payload.get(k,'') for k in allowed}
-    draft=PropertyDraft.query.filter_by(user_id=user.id).first()
-    if not draft:
-        draft=PropertyDraft(user_id=user.id); db.session.add(draft)
-    draft.payload=json.dumps(clean, ensure_ascii=False)
-    draft.updated_at=datetime.utcnow()
-    db.session.commit()
-    return {'ok':True,'saved_at':datetime.now().strftime('%H:%M:%S')}
-
-@app.route('/properties/draft/clear', methods=['POST'])
-@login_required
-def properties_draft_clear():
-    draft=PropertyDraft.query.filter_by(user_id=get_current_user().id).first()
-    if draft:
-        db.session.delete(draft); db.session.commit(); flash('تم مسح المسودة المحفوظة')
-    return redirect(url_for('properties'))
-
-@app.route('/properties/bulk-import', methods=['POST'])
-@login_required
-def properties_bulk_import():
-    user=get_current_user()
-    if user.role not in ['admin','executive','marketer']:
-        flash('ليس لديك صلاحية الاستيراد'); return redirect(url_for('properties'))
-    raw=request.form.get('bulk_text','').strip()
-    file=request.files.get('bulk_file')
-    if file and file.filename:
-        raw=file.read().decode('utf-8-sig', errors='ignore')
-    if not raw:
-        flash('ضع البيانات في مربع الاستيراد أو ارفع ملف CSV'); return redirect(url_for('properties'))
-    rows=list(csv.reader(io.StringIO(raw)))
-    added=0
-    for cols in rows:
-        if not cols or not ''.join(cols).strip(): continue
-        if cols[0].strip().lower() in ['name','اسم العقار','العقار']: continue
-        cols += ['']*6
-        name, location, price, property_type, exclusive, specs = [c.strip() for c in cols[:6]]
-        if not name: continue
-        row=Property(name=name, location=location, price=price, specs=specs, property_type=property_type or 'other',
-                     is_exclusive=exclusive in ['1','yes','true','حصري','نعم'], show_to_visitors=True, status='available',
-                     marketer_id=(user.id if user.role=='marketer' else None))
-        db.session.add(row); added+=1
-    db.session.commit(); flash(f'تم استيراد {added} إعلان بنجاح. أضف الصور لاحقاً من التفاصيل أو عدّل البيانات عند الحاجة.')
-    return redirect(url_for('properties'))
+    return render_template('properties.html', rows=query.order_by(Property.id.desc()).all(), q=q, marketers=User.query.filter_by(role='marketer').all(), prefill=prefill)
 @app.route('/properties/<int:pid>')
 @login_required
 def property_detail(pid): return render_template('property_detail.html', row=Property.query.get_or_404(pid))
@@ -654,18 +472,6 @@ def property_detail(pid): return render_template('property_detail.html', row=Pro
 @login_required
 def property_status(pid):
     row=Property.query.get_or_404(pid); row.status=request.form.get('status','available'); db.session.commit(); flash('تم تحديث حالة العقار'); return redirect(url_for('properties'))
-
-@app.route('/properties/visibility/<int:pid>', methods=['POST'])
-@login_required
-def property_visibility(pid):
-    if get_current_user().role not in ['admin','executive','marketer']:
-        flash('ليس لديك صلاحية تعديل ظهور العقار'); return redirect(url_for('properties'))
-    row=Property.query.get_or_404(pid)
-    row.show_to_visitors=bool(request.form.get('show_to_visitors'))
-    row.is_exclusive=bool(request.form.get('is_exclusive'))
-    row.property_type=request.form.get('property_type', row.property_type or 'other')
-    db.session.commit(); flash('تم تحديث ظهور العقار للزوار'); return redirect(url_for('properties'))
-
 @app.route('/properties/delete/<int:pid>', methods=['POST'])
 @login_required
 def delete_property(pid):
@@ -702,8 +508,6 @@ def send_whatsapp():
 @app.route('/offers', methods=['GET','POST'])
 @login_required
 def offers():
-    flash('تم دمج العروض مع العقارات؛ أضف العقار مرة واحدة وحدد ظهوره للزائر')
-    return redirect(url_for('properties'))
     user=get_current_user()
     if request.method=='POST':
         if user.role not in ['admin','executive','marketer']: flash('ليس لديك صلاحية إضافة عرض'); return redirect(url_for('offers'))
@@ -715,12 +519,11 @@ def offers():
                 raw=file.read()
                 if raw: uploaded.append(f"data:{file.mimetype or 'image/jpeg'};base64,"+base64.b64encode(raw).decode('utf-8'))
         mid=int(request.form.get('marketer_id') or (user.id if user.role=='marketer' else 0) or 0) or None
-        ext_mid=int(request.form.get('ext_marketer_id') or 0) or None
-        row=Offer(title=request.form.get('title',''),description=request.form.get('description',''),price=request.form.get('price',''),image_data=uploaded[0] if uploaded else '',images_data=json.dumps(uploaded[1:] if len(uploaded)>1 else [],ensure_ascii=False),status=request.form.get('status','available'),marketer_id=mid, ext_marketer_id=ext_mid)
+        row=Offer(title=request.form.get('title',''),description=request.form.get('description',''),price=request.form.get('price',''),image_data=uploaded[0] if uploaded else '',images_data=json.dumps(uploaded[1:] if len(uploaded)>1 else [],ensure_ascii=False),status=request.form.get('status','available'),marketer_id=mid)
         db.session.add(row); db.session.commit(); flash('تم إضافة العرض وحفظه'); return redirect(url_for('offers'))
     query=Offer.query
     if user.role=='marketer': query=query.filter_by(marketer_id=user.id)
-    return render_template('offers.html', offers=query.order_by(Offer.id.desc()).all(), marketers=ExternalMarketer.query.order_by(ExternalMarketer.name).all())
+    return render_template('offers.html', offers=query.order_by(Offer.id.desc()).all(), messages=CustomerMessage.query.order_by(CustomerMessage.id.desc()).all(), marketers=User.query.filter_by(role='marketer').all())
 @app.route('/messages', methods=['POST'])
 @login_required
 def messages():
@@ -729,8 +532,6 @@ def messages():
 @app.route('/offers/status/<int:oid>', methods=['POST'])
 @login_required
 def offer_status(oid):
-    if get_current_user().role not in ['admin','executive','marketer']:
-        flash('ليس لديك صلاحية تعديل حالة العرض'); return redirect(url_for('offers'))
     row=Offer.query.get_or_404(oid); row.status=request.form.get('status','available'); db.session.commit(); flash('تم تحديث حالة العرض'); return redirect(url_for('offers'))
 @app.route('/offers/delete/<int:oid>', methods=['POST'])
 @login_required
