@@ -1,16 +1,39 @@
 {% extends 'base.html' %}{% block content %}
-<h2>لوحة تحكم روفا جولدن</h2>
-<p class="small">لوحة احترافية مختصرة تعرض حالة النظام، العروض، المسوقين، والمبيعات.</p>
-<div class="dash">
-  <div class="stat">العقارات<b>{{stats.properties}}</b></div>
-  <div class="stat">العروض النشطة<b>{{stats.offers}}</b></div>
-  <div class="stat">العملاء<b>{{stats.customers}}</b></div>
-  <div class="stat">المسوقين<b>{{stats.marketers}}</b></div>
-  <div class="stat">إجمالي المبيعات<b>{{stats.sales|sar}}</b></div>
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>إدارة العقارات</h2>
+<p class="small">أضفت لك خيارين: إضافة يدوية، أو إضافة من رابط إعلان. ضع الرابط في الخانة الأولى ثم اضغط جلب البيانات.</p>
+<form method="get"><input name="q" value="{{q}}" placeholder="بحث باسم العقار أو الحي أو السعر"><button class="btn">بحث</button></form>
+{% if current_user.role in ['admin','executive','marketer'] %}
+<div class="card" style="border:2px solid #d8b35a">
+<h3>🔗 إضافة عقار من رابط إعلان</h3>
+<form method="post">
+<input type="hidden" name="form_type" value="import_link">
+<div class="row"><input name="property_url" placeholder="ضع رابط الإعلان هنا ثم اضغط جلب البيانات" required><button class="btn gold">جلب البيانات والصور</button></div>
+</form>
+<div class="small">بعد الجلب ستنتقل البيانات تلقائياً إلى خانات إضافة العقار، ثم راجعها واضغط حفظ العقار.</div>
 </div>
-<div class="card"><h3>صلاحيتك الحالية: {{role_labels.get(current_user.role,current_user.role)}}</h3>
-{% if current_user.role == 'admin' %}<p>لديك جميع الصلاحيات.</p>{% elif current_user.role == 'marketer' %}<p>تستطيع إضافة ومتابعة عروضك وعقاراتك وحسابك المالي.</p>{% else %}<p>حسب الصلاحية المسندة لحسابك.</p>{% endif %}</div>
-<h3>أداء المسوقين</h3>
-<table><tr><th>المسوق</th><th>العروض</th><th>المبيعات</th><th>العمولة</th><th>الرصيد</th></tr>{% for u,st in top %}<tr><td><a href="{{url_for('marketer_detail',uid=u.id)}}">{{u.full_name or u.username}}</a></td><td>{{st.offers_count}}</td><td>{{st.total_sales|sar}}</td><td>{{st.total_commission|sar}}</td><td>{{st.balance|sar}}</td></tr>{% endfor %}</table>
-<div class="nav"><a class="btn green" href="{{url_for('properties')}}">العقارات</a><a class="btn brown" href="{{url_for('offers')}}">العروض</a><a class="btn black" href="{{url_for('marketers')}}">إدارة المسوقين</a><a class="btn gold" href="{{url_for('finance')}}">الإدارة المالية</a><a class="btn" href="{{url_for('visitor_offers')}}" target="_blank">معاينة الزائر</a></div>
+<form id="propertyForm" method="post" enctype="multipart/form-data" onsubmit="clearDraft('propertyForm')">
+<h3>إضافة عقار جديد</h3>
+<div class="autosave" id="propertyForm_note">الحقول تحفظ كمسودة تلقائياً على الجهاز، وعند الضغط على حفظ يتم حفظ العقار على السحابة.</div>
+<input type="hidden" name="source_url" value="{{prefill.get('source_url','') if prefill else ''}}">
+<input type="hidden" name="imported_images" value='{{(prefill.get("images",[]) if prefill else [])|tojson}}'>
+<div class="row">
+<input name="name" value="{{prefill.get('name','') if prefill else ''}}" placeholder="اسم العقار / المشروع">
+<input name="location" value="{{prefill.get('location','') if prefill else ''}}" placeholder="الحي / الموقع">
+<input name="price" value="{{prefill.get('price','') if prefill else ''}}" placeholder="السعر">
+<select name="status"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select>
+{% if current_user.role in ['admin','executive'] %}<select name="marketer_id"><option value="">اختر المسوق - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.full_name or m.username}}</option>{% endfor %}</select>{% endif %}
+</div>
+<div class="row"><input type="file" name="images" multiple accept="image/*"></div>
+{% if prefill and prefill.get('images') %}
+<div class="small">تم جلب {{prefill.get('images')|length}} صورة من الرابط. ستُحفظ مع العقار عند الضغط على حفظ.</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:10px 0">
+{% for img in prefill.get('images') %}<img src="{{img}}" style="width:100%;height:90px;object-fit:cover;border-radius:12px;border:1px solid #ddd">{% endfor %}
+</div>
+{% endif %}
+<textarea name="specs" placeholder="المواصفات كاملة بالترتيب: المساحة، الغرف، الأدوار، الضمانات، المميزات، الملاحظات">{{prefill.get('specs','') if prefill else ''}}</textarea>
+<button class="btn green">حفظ العقار سحابياً</button>
+</form><script>loadDraft('propertyForm')</script>
+{% endif %}
+<h3>العقارات الحالية</h3>
+<table><tr><th>الصورة</th><th>العقار</th><th>الموقع</th><th>السعر</th><th>الحالة</th><th>الخيارات</th></tr>{% for r in rows %}<tr><td>{% if r.image_data %}<img src="{{r.image_data}}" style="width:70px;height:55px;object-fit:cover;border-radius:10px">{% else %}-{% endif %}</td><td>{{r.name}}</td><td>{{r.location}}</td><td>{{r.price}}</td><td><span class="status {{r.status}}">{{status_labels.get(r.status,r.status)}}</span></td><td><a class="btn" href="{{url_for('property_detail',pid=r.id)}}">رؤية التفاصيل</a><form method="post" action="{{url_for('property_status',pid=r.id)}}" style="display:inline"><select name="status" style="width:auto"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select><button class="btn gold">تحديث</button></form>{% if can_delete_content(current_user) %}<form method="post" action="{{url_for('delete_property',pid=r.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form>{% endif %}</td></tr>{% endfor %}</table>
 {% endblock %}
