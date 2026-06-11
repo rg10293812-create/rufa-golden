@@ -1,42 +1,68 @@
-<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>عروض روفا جولدن</title>
-  <style>
-    *{box-sizing:border-box} body{margin:0;font-family:Tahoma,Arial,sans-serif;background:#f5f1e8;color:#1f1f1f}.hero{background:linear-gradient(135deg,#0e281d,#b89545);color:white;padding:30px 18px;text-align:center}.hero h1{margin:0;font-size:34px}.hero p{opacity:.9;margin:10px 0 18px}.back{display:inline-block;background:#fff;color:#10351f;text-decoration:none;padding:12px 26px;border-radius:999px;font-weight:bold}.wrap{max-width:1180px;margin:28px auto;padding:0 16px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:22px}.card{background:white;border-radius:22px;overflow:hidden;box-shadow:0 14px 35px rgba(0,0,0,.12);text-decoration:none;color:#222;transition:.22s;display:block}.card:hover{transform:translateY(-5px);box-shadow:0 18px 45px rgba(0,0,0,.18)}.img{height:225px;background:linear-gradient(135deg,#ddd,#f7f7f7);display:flex;align-items:center;justify-content:center;font-size:55px;color:#b89545}.img img{width:100%;height:100%;object-fit:cover}.body{padding:18px}.name{font-size:22px;font-weight:800;margin-bottom:8px;color:#0e281d}.price{font-size:18px;font-weight:700;color:#a37718;margin:6px 0}.desc{color:#555;line-height:1.8;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.details{margin-top:14px;background:#0e281d;color:white;border-radius:12px;padding:11px;text-align:center;font-weight:bold}.empty{background:white;border-radius:18px;padding:28px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,.08)}
-  </style>
-</head>
-<body>
-  <header class="hero">
-    <h1>عروض روفا جولدن العقارية</h1>
-    <p>اختر المشروع لمشاهدة الصور والمواصفات والتفاصيل كاملة</p>
-    <a class="back" href="{{ url_for('landing') }}">الرجوع للقائمة الرئيسية</a>
-  </header>
-  <main class="wrap">
-    <form method="get" style="background:white;border-radius:18px;padding:16px;margin-bottom:22px;box-shadow:0 10px 25px rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 1fr 120px;gap:10px">
-      <input name="q" value="{{q or ''}}" placeholder="ابحث باسم المشروع أو السعر أو الوصف" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
-      <input name="location" value="{{location or ''}}" placeholder="الحي / الموقع" style="padding:13px;border:1px solid #ddd;border-radius:12px;text-align:right">
-      <button style="background:#0e281d;color:white;border:0;border-radius:12px;font-weight:bold">بحث</button>
+{% extends 'base.html' %}{% block content %}
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a>
+<h2>إدارة المستخدمين والصلاحيات</h2>
+
+<div class="card">
+<h3>إضافة حساب جديد</h3>
+<form method="post">
+<div class="row">
+  <input name="full_name" placeholder="الاسم الكامل">
+  <input name="username" placeholder="اسم المستخدم" required>
+  <input name="password" type="password" placeholder="كلمة المرور" required>
+  <input name="phone" placeholder="جوال المسوق / المستخدم">
+  <input name="email" placeholder="البريد الإلكتروني">
+  <input name="commission_rate" placeholder="نسبة العمولة للمسوق مثل 2.5">
+</div>
+<select name="role">
+{% for key,label in roles.items() %}<option value="{{key}}">{{label}}</option>{% endfor %}
+</select>
+<div class="perm-grid">
+  <label><input type="checkbox" name="can_delete"> السماح بالحذف</label>
+  <label><input type="checkbox" name="can_manage_users"> السماح بإدارة المستخدمين</label>
+</div>
+<p class="small">ملاحظة: المدير العام يحصل تلقائياً على جميع الصلاحيات.</p>
+<button class="btn green">إضافة المستخدم</button>
+</form>
+</div>
+
+<h3>المستخدمون الحاليون</h3>
+<table>
+<tr><th>الاسم</th><th>اسم المستخدم</th><th>الجوال</th><th>النسبة</th><th>الصلاحية</th><th>صلاحيات إضافية</th><th>الحالة</th><th>الإجراءات</th></tr>
+{% for u in rows %}
+<tr>
+<td>{{u.full_name}}</td>
+<td>{{u.username}}</td>
+<td>{{u.phone}}</td>
+<td>{{u.commission_rate}}%</td>
+<td>{{roles.get(u.role,u.role)}}</td>
+<td>
+  {% if u.role == 'admin' %}<span class="badge">كل الصلاحيات</span>{% else %}
+    {% if u.can_delete %}<span class="badge good">حذف</span>{% endif %}
+    {% if u.can_manage_users %}<span class="badge good">إدارة مستخدمين</span>{% endif %}
+    {% if not u.can_delete and not u.can_manage_users %}<span class="small">لا توجد</span>{% endif %}
+  {% endif %}
+</td>
+<td>{{'فعال' if u.is_active else 'معطل'}}</td>
+<td>
+  <details>
+    <summary class="btn">تعديل الصلاحيات</summary>
+    <form method="post" action="{{url_for('update_user_permissions',uid=u.id)}}" class="mini-form">
+      <select name="role">
+        {% for key,label in roles.items() %}<option value="{{key}}" {% if u.role==key %}selected{% endif %}>{{label}}</option>{% endfor %}
+      </select>
+      <input name="phone" value="{{u.phone}}" placeholder="الجوال">
+      <input name="email" value="{{u.email}}" placeholder="البريد">
+      <input name="commission_rate" value="{{u.commission_rate}}" placeholder="نسبة العمولة">
+      <label><input type="checkbox" name="can_delete" {% if u.can_delete or u.role=='admin' %}checked{% endif %}> يسمح له بالحذف</label>
+      <label><input type="checkbox" name="can_manage_users" {% if u.can_manage_users or u.role=='admin' %}checked{% endif %}> يسمح له بإدارة المستخدمين</label>
+      <label><input type="checkbox" name="is_active" {% if u.is_active %}checked{% endif %}> الحساب فعال</label>
+      <button class="btn green">حفظ الصلاحيات</button>
     </form>
-    {% if offers %}
-    <section class="grid">
-      {% for offer in offers %}
-      <a class="card" href="{{ url_for('visitor_offer_detail', oid=offer.id) }}">
-        <div class="img">{% if offer.image_data %}<img src="{{ offer.image_data }}" alt="{{ offer.title }}">{% else %}🏡{% endif %}</div>
-        <div class="body">
-          <div class="name">{{ offer.title or 'مشروع عقاري' }}</div>
-          {% if offer.price %}<div class="price">{{ offer.price }}</div>{% endif %}
-          {% if offer.description %}<div class="desc">{{ offer.description }}</div>{% endif %}
-          <div class="details">عرض التفاصيل والصور</div>
-        </div>
-      </a>
-      {% endfor %}
-    </section>
-    {% else %}
-    <div class="empty">لا توجد عروض متاحة حالياً.</div>
-    {% endif %}
-  </main>
-</body>
-</html>
+  </details>
+  <form method="post" action="{{url_for('toggle_user',uid=u.id)}}" style="display:inline"><button class="btn gold">{{'تعطيل' if u.is_active else 'تفعيل'}}</button></form>
+  <form method="post" action="{{url_for('delete_user',uid=u.id)}}" style="display:inline"><button class="btn red" onclick="return confirm('حذف المستخدم؟')">حذف</button></form>
+</td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}

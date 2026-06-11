@@ -1,5 +1,10 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>روابط واتساب</h2>
-<p class="small">اضغط على كل رابط لفتح واتساب وإرسال الرسالة. بعض الأجهزة تمنع الإرسال التلقائي الكامل.</p>
-{% for l in links %}<div class="card"><b>{{l.name}}</b><br>{{l.phone}}<br><a class="btn green" target="_blank" href="{{l.url}}">فتح واتساب</a></div>{% endfor %}
+<a class="btn gray" href="{{url_for('properties')}}">رجوع</a>
+<h2>{{row.name}}</h2>
+<p><b>الموقع:</b> {{row.location}}</p><p><b>السعر:</b> {{row.price}}</p>
+{% if images %}
+<h3>صور العقار</h3>
+<div class="card">{% for img in images %}<img class="img" src="{{img}}">{% endfor %}</div>
+{% endif %}
+<h3>المواصفات كاملة</h3><div class="card" style="white-space:pre-wrap;line-height:1.9">{{row.specs}}</div>
 {% endblock %}

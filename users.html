@@ -1,13 +1,5 @@
 {% extends 'base.html' %}{% block content %}
-<div class="loginbox">
-<h2>تسجيل الدخول للأعضاء</h2>
-<form method="post" autocomplete="off">
-<input name="username" placeholder="اسم المستخدم" required autocomplete="username">
-<input name="password" type="password" placeholder="كلمة المرور" required autocomplete="current-password">
-<button class="btn green" style="width:100%">دخول</button>
-</form>
-<div style="text-align:center;margin-top:14px">
-<a class="btn gray" href="{{ url_for('landing') }}">رجوع للقائمة الرئيسية</a>
-</div>
-</div>
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>روابط واتساب</h2>
+<p class="small">اضغط على كل رابط لفتح واتساب وإرسال الرسالة. بعض الأجهزة تمنع الإرسال التلقائي الكامل.</p>
+{% for l in links %}<div class="card"><b>{{l.name}}</b><br>{{l.phone}}<br><a class="btn green" target="_blank" href="{{l.url}}">فتح واتساب</a></div>{% endfor %}
 {% endblock %}

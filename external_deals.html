@@ -1,30 +1,6 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('system_health')}}">رجوع للصيانة</a>
-<h2>إدارة النسخ الاحتياطية</h2>
-<div class="card">
-  <h3>نسخة احتياطية فورية</h3>
-  <p>النسخة تحفظ قاعدة البيانات والبيانات المهمة داخل ملف ZIP، ويتم الاحتفاظ بآخر {{keep_last}} نسخة فقط.</p>
-  <form method="post" action="{{url_for('backup_create_route')}}">
-    <button class="btn gold">📦 إنشاء وتحميل نسخة احتياطية الآن</button>
-  </form>
-  <p class="small">النسخ التلقائي يعمل يومياً الساعة {{auto_hour}}:00 صباحاً حسب وقت الخادم إذا كانت الاستضافة تدعم المهام الخلفية.</p>
-</div>
-<table>
-<tr><th>اسم النسخة</th><th>تاريخ الإنشاء</th><th>الحجم</th><th>إجراء</th></tr>
-{% for b in backups %}
-<tr>
-<td>{{b.name}}</td>
-<td>{{b.created.strftime('%Y-%m-%d %H:%M')}}</td>
-<td>{{(b.size/1024/1024)|round(2)}} MB</td>
-<td>
-  <a class="btn green" href="{{url_for('backup_download', name=b.name)}}">تحميل</a>
-  <form method="post" action="{{url_for('backup_delete', name=b.name)}}" style="display:inline" onsubmit="return confirm('حذف النسخة الاحتياطية؟')">
-    <button class="btn red">حذف</button>
-  </form>
-</td>
-</tr>
-{% else %}
-<tr><td colspan="4">لا توجد نسخ احتياطية حتى الآن.</td></tr>
-{% endfor %}
-</table>
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>الإدارة المالية</h2>
+<div class="row"><div class="card"><h3>تسجيل بيع وحساب عمولة</h3><form method="post"><input type="hidden" name="action" value="sale"><select name="marketer_id" required><option value="">اختر المسوق</option>{% for m in marketers %}<option value="{{m.id}}">{{m.full_name or m.username}} - {{m.commission_rate}}%</option>{% endfor %}</select><input name="deal_value" placeholder="قيمة الصفقة" required><input name="commission_rate" placeholder="نسبة العمولة - اتركها فارغة لاستخدام نسبة المسوق"><select name="offer_id"><option value="">ربط بعرض - اختياري</option>{% for o in offers %}<option value="{{o.id}}">{{o.title}}</option>{% endfor %}</select><select name="property_id"><option value="">ربط بعقار - اختياري</option>{% for p in properties %}<option value="{{p.id}}">{{p.name}}</option>{% endfor %}</select><input name="notes" placeholder="ملاحظات"><button class="btn green">تسجيل البيع</button></form></div>
+<div class="card"><h3>صرف عمولة</h3><form method="post"><input type="hidden" name="action" value="payout"><select name="marketer_id" required><option value="">اختر المسوق</option>{% for m in marketers %}<option value="{{m.id}}">{{m.full_name or m.username}}</option>{% endfor %}</select><input name="amount" placeholder="المبلغ المصروف" required><input name="notes" placeholder="ملاحظات الصرف"><button class="btn gold">صرف وخصم من الرصيد</button></form></div></div>
+<h3>آخر الصفقات</h3><table><tr><th>التاريخ</th><th>المسوق</th><th>قيمة الصفقة</th><th>النسبة</th><th>العمولة</th><th>ملاحظات</th></tr>{% for s in sales %}<tr><td>{{s.created_at.strftime('%Y-%m-%d')}}</td><td>{{s.marketer_id}}</td><td>{{s.deal_value|sar}}</td><td>{{s.commission_rate}}%</td><td>{{s.commission_amount|sar}}</td><td>{{s.notes}}</td></tr>{% endfor %}</table>
 {% endblock %}

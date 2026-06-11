@@ -1,20 +1,12 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>صفحة العروض</h2>
-<h3>رسائل الزباين</h3>
+<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a>
+<h2>{{title}}</h2>
+<div><a class="btn" href="{{url_for('contacts',category='marketers')}}">أرقام المسوقين</a><a class="btn" href="{{url_for('contacts',category='customers')}}">أرقام الزباين</a><a class="btn" href="{{url_for('contacts',category='developers')}}">أرقام المطورين</a></div>
 {% if current_user.role in ['admin','executive','marketer'] %}
-<form id="messageForm" method="post" action="{{url_for('messages')}}" onsubmit="clearDraft('messageForm')"><div class="autosave" id="messageForm_note">رسالة العميل تحفظ كمسودة تلقائياً حتى تضغط حفظ.</div><div class="row"><input name="customer_name" placeholder="اسم العميل"><input name="phone" placeholder="الجوال"><input name="message" placeholder="الرسالة / الطلب"></div><button class="btn green">حفظ رسالة العميل سحابياً</button></form><script>loadDraft('messageForm')</script>
+<form id="contactForm" method="post" onsubmit="clearDraft('contactForm')">
+<div class="autosave" id="contactForm_note">الحقول تحفظ كمسودة تلقائياً، وعند الضغط على حفظ يتم حفظ الرقم على السحابة.</div>
+<div class="row"><input name="name" placeholder="الاسم"><input name="phone" placeholder="رقم الجوال"><input name="notes" placeholder="ملاحظات"></div><button class="btn green">حفظ الرقم سحابياً</button></form><script>loadDraft('contactForm')</script>
 {% endif %}
-<table><tr><th>العميل</th><th>الجوال</th><th>الرسالة</th></tr>{% for m in messages %}<tr><td>{{m.customer_name}}</td><td>{{m.phone}}</td><td>{{m.message}}</td></tr>{% endfor %}</table>
-<h3>إضافة عرض تسويقي للزائر</h3>
-{% if current_user.role in ['admin','executive','marketer'] %}
-<form id="offerForm" method="post" enctype="multipart/form-data" onsubmit="clearDraft('offerForm')">
-  <div class="autosave" id="offerForm_note">بيانات العرض تحفظ كمسودة تلقائياً، والصور تحفظ عند الضغط على إضافة العرض.</div>
-  <div class="row"><input name="title" placeholder="اسم المشروع مثل: فلة الحمراء"><input name="price" placeholder="السعر"><input type="file" name="images" accept="image/*" multiple><select name="status"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select>{% if current_user.role in ['admin','executive'] %}<select name="marketer_id"><option value="">اختر المسوق - اختياري</option>{% for m in marketers %}<option value="{{m.id}}">{{m.full_name or m.username}}</option>{% endfor %}</select>{% endif %}</div>
-  <p class="small">اختر أكثر من صورة: الصورة الأولى تظهر كصورة رئيسية للزائر، وباقي الصور تظهر داخل تفاصيل المشروع.</p>
-  <textarea name="description" placeholder="تفاصيل المشروع: الحي، المساحة، الغرف، الضمانات، المميزات، الموقع..."></textarea>
-  <button class="btn gold">إضافة العرض سحابياً</button>
-</form><script>loadDraft('offerForm')</script>
-{% else %}<p class="small">صلاحيتك مشاهدة العروض فقط.</p>{% endif %}
-<h3>العروض الحالية</h3>
-{% for o in offers %}<div class="card"><h3>{{o.title}}</h3><p><b>السعر:</b> {{o.price}} | <b>الحالة:</b> <span class="status {{o.status}}">{{status_labels.get(o.status,o.status)}}</span></p><p style="white-space:pre-wrap">{{o.description}}</p>{% if o.image_data %}<img class="img" src="{{o.image_data}}">{% endif %}<p><a class="btn" href="{{ url_for('visitor_offer_detail', oid=o.id) }}" target="_blank">معاينة كزائر</a></p><form method="post" action="{{url_for('offer_status',oid=o.id)}}"><select name="status" style="width:auto"><option value="available">متاح</option><option value="reserved">محجوز</option><option value="sold">مباع</option></select><button class="btn gold">تحديث الحالة</button></form>{% if can_delete_content(current_user) %}<form method="post" action="{{url_for('delete_offer',oid=o.id)}}"><button class="btn red" onclick="return confirm('حذف العرض؟')">حذف</button></form>{% endif %}</div>{% endfor %}
+{% if current_user.role in ['admin','executive','marketer'] %}<form method="post" action="{{url_for('send_whatsapp')}}"><input type="hidden" name="category" value="{{category}}"><textarea name="message" placeholder="اكتب الرسالة هنا"></textarea><label><input type="checkbox" onclick="toggleAll(this)" style="width:auto"> تحديد الكل</label><button class="btn gold">إرسال رسالة واتساب للمحدد</button>{% endif %}
+<table><tr>{% if current_user.role in ['admin','executive','marketer'] %}<th>تحديد</th>{% endif %}<th>الاسم</th><th>الجوال</th><th>ملاحظات</th>{% if can_delete_content(current_user) %}<th>حذف</th>{% endif %}</tr>{% for r in rows %}<tr>{% if current_user.role in ['admin','executive','marketer'] %}<td><input type="checkbox" name="selected" value="{{r.id}}" style="width:auto"></td>{% endif %}<td>{{r.name}}</td><td>{{r.phone}}</td><td>{{r.notes}}</td>{% if can_delete_content(current_user) %}<td><form method="post" action="{{url_for('delete_contact',cid=r.id,category=category)}}"><button class="btn red" onclick="return confirm('حذف؟')">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table>{% if current_user.role in ['admin','executive','marketer'] %}</form>{% endif %}
 {% endblock %}

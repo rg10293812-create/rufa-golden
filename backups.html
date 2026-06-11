@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>صيانة النظام</h2>
-<div class="card"><p>زر الإصلاح يفحص قاعدة البيانات ويضيف الأعمدة الناقصة تلقائياً، ويصلح مشاكل التحديثات القديمة قدر الإمكان.</p><form method="post" action="{{url_for('system_fix')}}"><button class="btn green">إصلاح تلقائي وفحص النظام</button></form></div>
-<div class="card"><h3>النسخ الاحتياطي</h3><p>أنشئ نسخة احتياطية فورية أو حمل النسخ السابقة من هنا.</p><a class="btn gold" href="{{url_for('backups_page')}}">إدارة النسخ الاحتياطية</a></div>
-<table><tr><th>التاريخ</th><th>الحالة</th><th>المستخدم</th><th>الرسالة</th></tr>{% for l in logs %}<tr><td>{{l.created_at.strftime('%Y-%m-%d %H:%M')}}</td><td>{{l.status}}</td><td>{{l.user_name}}</td><td>{{l.message}}</td></tr>{% endfor %}</table>
+<a class="btn gray" href="{{url_for('marketers')}}">رجوع</a><h2>حساب المسوق: {{u.full_name or u.username}}</h2>
+<div class="dash"><div class="stat">العروض<b>{{st.offers_count}}</b></div><div class="stat">المبيعات<b>{{st.total_sales|sar}}</b></div><div class="stat">العمولة<b>{{st.total_commission|sar}}</b></div><div class="stat">المصروف<b>{{st.total_paid|sar}}</b></div><div class="stat">الرصيد<b>{{st.balance|sar}}</b></div></div>
+<div class="card"><p><b>الجوال:</b> {{u.phone}} | <b>البريد:</b> {{u.email}} | <b>نسبة العمولة:</b> {{u.commission_rate}}%</p></div>
+<h3>الصفقات</h3><table><tr><th>التاريخ</th><th>قيمة الصفقة</th><th>النسبة</th><th>العمولة</th><th>ملاحظات</th></tr>{% for s in sales %}<tr><td>{{s.created_at.strftime('%Y-%m-%d')}}</td><td>{{s.deal_value|sar}}</td><td>{{s.commission_rate}}%</td><td>{{s.commission_amount|sar}}</td><td>{{s.notes}}</td></tr>{% endfor %}</table>
+<h3>المبالغ المصروفة</h3><table><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظات</th></tr>{% for p in payouts %}<tr><td>{{p.created_at.strftime('%Y-%m-%d')}}</td><td>{{p.amount|sar}}</td><td>{{p.notes}}</td></tr>{% endfor %}</table>
 {% endblock %}
