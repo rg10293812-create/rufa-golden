@@ -1,5 +1,21 @@
-{% extends 'base.html' %}{% block content %}
-<a class="btn gray" href="{{url_for('index')}}">الرئيسية</a><h2>روابط واتساب</h2>
-<p class="small">اضغط على كل رابط لفتح واتساب وإرسال الرسالة. بعض الأجهزة تمنع الإرسال التلقائي الكامل.</p>
-{% for l in links %}<div class="card"><b>{{l.name}}</b><br>{{l.phone}}<br><a class="btn green" target="_blank" href="{{l.url}}">فتح واتساب</a></div>{% endfor %}
+{% extends 'base.html' %}
+{% block content %}
+<h3 class="mb-3">لوحة التحكم</h3>
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card p-3"><div>إجمالي العقارات</div><div class="stat">{{ props_count }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div>العقارات المباعة</div><div class="stat">{{ sold_count }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div>المهام المفتوحة</div><div class="stat">{{ open_tasks }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div>صافي ربح الشركة</div><div class="stat">{{ net|money }}</div></div></div>
+</div>
+{% if current_user.role == 'manager' %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="card p-3"><div>دخل الشركة من السعي</div><h4>{{ company_income|money }}</h4></div></div>
+  <div class="col-md-4"><div class="card p-3"><div>المصاريف</div><h4>{{ expenses|money }}</h4></div></div>
+  <div class="col-md-4"><div class="card p-3"><div>الرواتب المصروفة</div><h4>{{ salaries|money }}</h4></div></div>
+</div>
+{% endif %}
+<div class="card p-3"><h5>آخر العقارات</h5>
+<table class="table"><thead><tr><th>الكود</th><th>المشروع</th><th>الحي</th><th>النوع</th><th>الحالة</th></tr></thead><tbody>
+{% for p in recent_props %}<tr><td>{{ p.code }}</td><td>{{ p.project_name }}</td><td>{{ p.district }}</td><td>{{ p.property_type }}</td><td>{{ p.status }}</td></tr>{% endfor %}
+</tbody></table></div>
 {% endblock %}
